@@ -171,6 +171,7 @@ async def artwork_proxy(url: str = Query(...)):
         url.startswith("https://is")
         or url.startswith("https://cdn-images.dzcdn.net")
         or url.startswith("https://e-cdns-images.dzcdn.net")
+        or url.startswith("https://upload.wikimedia.org")
     ):
         raise HTTPException(status_code=400, detail="URL d'artwork non autorisée.")
     try:
@@ -187,6 +188,64 @@ async def artwork_proxy(url: str = Query(...)):
         raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/audio-proxy")
+async def audio_proxy(url: str = Query(...)):
+    """CORS-safe proxy for 30s iTunes/Deezer previews so Web Audio API AnalyserNode can read FFT frequencies."""
+    if not (
+        url.startswith("https://audio-ssl.itunes.apple.com")
+        or url.startswith("https://cdns-preview-")
+        or url.startswith("https://cdnt-preview.")
+    ):
+        raise HTTPException(status_code=400, detail="URL audio non autorisée.")
+    try:
+        async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=404, detail="Extrait audio introuvable.")
+            return Response(
+                content=resp.content,
+                media_type=resp.headers.get("content-type", "audio/mp4"),
+                headers={
+                    "Cache-Control": "public, max-age=3600",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Free External Connectors (LRCLIB Lyrics, Wikipedia Bio, Deezer BPM)
+# ---------------------------------------------------------------------------
+@app.get("/api/external/lyrics")
+async def external_lyrics(
+    song: str = Query(...),
+    artist: str = Query(""),
+    album: str = Query(""),
+):
+    return await fetch_lyrics_lrclib(song, artist, album)
+
+
+@app.get("/api/external/artist-bio")
+async def external_artist_bio(artist: str = Query(...)):
+    return await fetch_artist_bio_wikipedia(artist)
+
+
+@app.get("/api/external/track-bpm")
+async def external_track_bpm(song: str = Query(...), artist: str = Query("")):
+    return await fetch_track_bpm_deezer(song, artist)
+
+
+@app.get("/api/analytics/galaxy")
+def galaxy_endpoint(
+    f: FilterParams = Depends(get_filter_params),
+    limit: int = Query(75, ge=10, le=120),
+):
+    return get_sonic_galaxy(f, limit=limit)
 
 
 # ---------------------------------------------------------------------------

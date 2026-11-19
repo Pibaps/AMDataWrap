@@ -102,7 +102,7 @@ async def fetch_lyrics_lrclib(song: str, artist: str = "", album: str = "") -> d
 
 async def fetch_artist_bio_wikipedia(artist: str) -> dict[str, Any]:
     """Free, zero-key artist bio & portrait via Wikipedia REST API (FR -> EN fallback)."""
-    cache_key = f"wiki:{artist.lower().strip()}"
+    cache_key = f"wiki:v2:{artist.lower().strip()}"
     cached = _get_cache(cache_key)
     if cached is not None:
         return cached
@@ -112,7 +112,10 @@ async def fetch_artist_bio_wikipedia(artist: str) -> dict[str, Any]:
         async with httpx.AsyncClient(
             timeout=6.0,
             follow_redirects=True,
-            headers={"User-Agent": "AMDataWrap/2.0 (Local Apple Music Analytics)"},
+            headers={
+                "User-Agent": "AMDataWrap/2.0 (https://localhost/amdatawrap; contact@amdatawrap.local) httpx/0.27",
+                "Accept": "application/json",
+            },
         ) as client:
             for lang in ("fr", "en"):
                 slug = quote(artist.strip().replace(" ", "_"))
@@ -133,7 +136,8 @@ async def fetch_artist_bio_wikipedia(artist: str) -> dict[str, Any]:
     except Exception:
         pass
 
-    _set_cache(cache_key, result)
+    if result["found"]:
+        _set_cache(cache_key, result)
     return result
 
 

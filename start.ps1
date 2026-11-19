@@ -1,4 +1,4 @@
-# AMDataWrap launcher (PowerShell)
+﻿# AMDataWrap launcher — Backend (:8000) + V1 Classique (:5173) + V2 Spatial 3D (:5174)
 $ErrorActionPreference = "SilentlyContinue"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
@@ -10,17 +10,25 @@ function Test-PortListening($port) {
 if (Test-PortListening 8000) {
     Write-Host "Backend API deja actif sur http://127.0.0.1:8000" -ForegroundColor Yellow
 } else {
-    Write-Host "Demarrage du Backend FastAPI..." -ForegroundColor Cyan
+    Write-Host "Demarrage du Backend FastAPI (:8000)..." -ForegroundColor Cyan
     Start-Process powershell -WorkingDirectory $root -ArgumentList "-NoExit", "-Command", ".\backend\.venv\Scripts\uvicorn.exe backend.app.main:app --host 127.0.0.1 --port 8000"
 }
 
 if (Test-PortListening 5173) {
-    Write-Host "Frontend Vite deja actif sur http://localhost:5173" -ForegroundColor Yellow
+    Write-Host "V1 Classique deja actif sur http://localhost:5173" -ForegroundColor Yellow
 } else {
-    Write-Host "Demarrage du Frontend Vite..." -ForegroundColor Cyan
+    Write-Host "Demarrage de V1 Classique (:5173)..." -ForegroundColor Cyan
     Start-Process powershell -WorkingDirectory "$root\frontend" -ArgumentList "-NoExit", "-Command", "npm run dev"
 }
 
+if (Test-PortListening 5174) {
+    Write-Host "V2 Spatial 3D deja actif sur http://localhost:5174" -ForegroundColor Yellow
+} else {
+    Write-Host "Demarrage de V2 Spatial 3D (:5174)..." -ForegroundColor Magenta
+    Start-Process powershell -WorkingDirectory "$root\frontend-v2" -ArgumentList "-NoExit", "-Command", "npm run dev"
+}
+
 Start-Sleep -Seconds 2
-Start-Process "http://localhost:5173"
-Write-Host "AMDataWrap pret : http://localhost:5173" -ForegroundColor Green
+Start-Process "http://localhost:5174"
+Write-Host "V1 Classique  : http://localhost:5173" -ForegroundColor Green
+Write-Host "V2 Spatial 3D : http://localhost:5174" -ForegroundColor Magenta
