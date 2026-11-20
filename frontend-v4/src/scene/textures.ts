@@ -429,27 +429,27 @@ export function makeTopPlateTexture(bg: string, inkColor: string, accent = "#c9a
   ctx.fillText("45", px(-0.72), pz(1.6));
   ctx.fillText("POWER", px(-1.98), pz(1.28));
 
-  // pitch scale
+  // volume / gain fader scale
   const x0 = px(1.85);
   const zTop = 0.2;
   const zBot = 1.5;
   ctx.lineWidth = 2;
-  ctx.font = `600 ${u * 0.055}px JetBrains Mono, monospace`;
-  for (let i = 0; i <= 16; i++) {
-    const z = zTop + (i / 16) * (zBot - zTop);
-    const val = 8 - i;
+  ctx.font = `600 ${u * 0.052}px JetBrains Mono, monospace`;
+  for (let i = 0; i <= 10; i++) {
+    const z = zTop + (i / 10) * (zBot - zTop);
+    const val = (10 - i) * 10;
     const len = i % 2 === 0 ? 0.12 : 0.06;
     ctx.beginPath();
     ctx.moveTo(x0 - u * 0.1 - u * len, pz(z));
     ctx.lineTo(x0 - u * 0.1, pz(z));
     ctx.stroke();
-    if (i % 4 === 0) {
+    if (i % 2 === 0) {
       ctx.textAlign = "right";
-      ctx.fillText(`${val > 0 ? "+" : ""}${val}`, x0 - u * 0.26, pz(z));
+      ctx.fillText(`${val}`, x0 - u * 0.26, pz(z));
     }
   }
   ctx.textAlign = "center";
-  ctx.fillText("PITCH ADJ.", x0, pz(1.66));
+  ctx.fillText("VOLUME · GAIN", x0, pz(1.66));
   ctx.fillStyle = accent;
   ctx.fillText("%", x0 + u * 0.2, pz(zTop - 0.08));
   ctx.fillStyle = inkColor;

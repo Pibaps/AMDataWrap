@@ -66,6 +66,8 @@ export interface V4State {
   setRpm: (rpm: 33 | 45) => void;
   pitchPct: number;
   setPitchPct: (pct: number) => void;
+  volumePct: number;
+  setVolumePct: (vol: number) => void;
   lidOpen: boolean;
   setLidOpen: (open: boolean) => void;
   lampOn: boolean;
@@ -150,6 +152,8 @@ export const useV4Store = create<V4State>((set) => ({
   setRpm: (rpm) => set({ rpm }),
   pitchPct: 0,
   setPitchPct: (pitchPct) => set({ pitchPct }),
+  volumePct: 80,
+  setVolumePct: (volumePct) => set({ volumePct: Math.max(0, Math.min(100, Math.round(volumePct))) }),
   lidOpen: true,
   setLidOpen: (lidOpen) => set({ lidOpen }),
   lampOn: true,

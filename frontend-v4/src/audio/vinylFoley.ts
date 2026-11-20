@@ -1,12 +1,19 @@
 /**
  * Procedural Web Audio mechanical sound effects + continuous analog vinyl crackle
- * for the 3D Vinyl Studio ("Salon d'écoute"):
- * - mechanical switch / start-stop button click
- * - cardboard sleeve slide & wooden crate flip rustle
- * - heavy needle drop thump + initial groove hiss
- * - continuous soft analog vinyl crackle while the stylus tracks the rotating platter
+ * for the 3D Vinyl Studio ("Salon d'écoute").
  *
- * 100% procedural Web Audio API, zero external assets, toggleable independently.
+ * Every physical interaction in the 3D room has its own distinct, logical acoustic signature:
+ * - `playStartStopButton`: Heavy spring-loaded mechanical switch clunk (START · STOP)
+ * - `playRpmMicroSwitch`: Crisp high-pitch tactile micro-switch click (33 / 45 RPM)
+ * - `playPowerToggle`: Rotary power knob snap
+ * - `playFaderDetent`: Soft metallic center-detent tick when sliding the volume/pitch fader
+ * - `playLidHinge`: Acrylic dust cover hinge creak + soft rubber bumper thud
+ * - `playLampSwitch`: Warm brass pull-chain / toggle click
+ * - `playCrateFlip`: Wooden crate cardboard-against-cardboard flip thud
+ * - `playSleeveSlide`: Paper-on-cardboard friction slide when pulling a jacket out or flipping recto/verso
+ * - `playRecordPlace`: Soft felt slipmat thud when placing the 12" vinyl onto the platter
+ * - `playNeedleDrop`: Stylus contact thump + initial vinyl groove hiss
+ * - `setCrackleLoop`: Continuous subtle analog vinyl surface crackle (scaled by turntable volume)
  */
 
 class VinylFoleyEngine {
@@ -28,23 +35,147 @@ class VinylFoleyEngine {
     return this.ctx;
   }
 
-  public playClick(enabled: boolean): void {
+  /** Heavy Technics START/STOP spring switch clunk (dual transient: down-click + spring release). */
+  public playStartStopButton(enabled: boolean): void {
     if (!enabled) return;
     const ctx = this.ensureContext();
     if (!ctx) return;
+    const now = ctx.currentTime;
 
-    // Tactile dual-transient mechanical button click (spring + contact)
+    const osc1 = ctx.createOscillator();
+    const g1 = ctx.createGain();
+    osc1.type = "triangle";
+    osc1.frequency.setValueAtTime(340, now);
+    osc1.frequency.exponentialRampToValueAtTime(95, now + 0.032);
+    g1.gain.setValueAtTime(0.14, now);
+    g1.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+    osc1.connect(g1).connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.038);
+
+    const osc2 = ctx.createOscillator();
+    const g2 = ctx.createGain();
+    osc2.type = "sine";
+    osc2.frequency.setValueAtTime(1180, now + 0.022);
+    osc2.frequency.exponentialRampToValueAtTime(420, now + 0.048);
+    g2.gain.setValueAtTime(0.06, now + 0.022);
+    g2.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+    osc2.connect(g2).connect(ctx.destination);
+    osc2.start(now + 0.022);
+    osc2.stop(now + 0.052);
+  }
+
+  /** Crisp high-pitch micro-switch click for 33 / 45 RPM speed buttons. */
+  public playRpmMicroSwitch(enabled: boolean): void {
+    if (!enabled) return;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(1650, now);
+    osc.frequency.exponentialRampToValueAtTime(520, now + 0.018);
+    gain.gain.setValueAtTime(0.055, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.022);
+  }
+
+  /** Rotary power switch snap. */
+  public playPowerToggle(enabled: boolean): void {
+    if (!enabled) return;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(620, now);
+    osc.frequency.exponentialRampToValueAtTime(160, now + 0.04);
+    gain.gain.setValueAtTime(0.09, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.048);
+  }
+
+  /** Subtle metallic detent tick when dragging the physical volume fader on the plinth. */
+  public playFaderDetent(enabled: boolean): void {
+    if (!enabled) return;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(2200, now);
+    osc.frequency.exponentialRampToValueAtTime(900, now + 0.009);
+    gain.gain.setValueAtTime(0.03, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.011);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.012);
+  }
+
+  /** Acrylic dust lid hinge movement + rubber bumper contact. */
+  public playLidHinge(enabled: boolean, opening: boolean): void {
+    if (!enabled) return;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(opening ? 140 : 210, now);
+    osc.frequency.exponentialRampToValueAtTime(opening ? 240 : 75, now + 0.14);
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.17);
+  }
+
+  /** Brass lamp switch click. */
+  public playLampSwitch(enabled: boolean): void {
+    if (!enabled) return;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "triangle";
-    osc.frequency.setValueAtTime(920, now);
-    osc.frequency.exponentialRampToValueAtTime(140, now + 0.028);
-    gain.gain.setValueAtTime(0.085, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.032);
+    osc.frequency.setValueAtTime(1420, now);
+    osc.frequency.exponentialRampToValueAtTime(380, now + 0.025);
+    gain.gain.setValueAtTime(0.075, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.028);
     osc.connect(gain).connect(ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.036);
+    osc.stop(now + 0.03);
+  }
+
+  /** Soft felt slipmat thud when placing a 12" vinyl disc onto the platter. */
+  public playRecordPlace(enabled: boolean): void {
+    if (!enabled) return;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(125, now);
+    osc.frequency.exponentialRampToValueAtTime(42, now + 0.09);
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.12);
+  }
+
+  /** Generic UI click (kept for compatibility). */
+  public playClick(enabled: boolean): void {
+    this.playRpmMicroSwitch(enabled);
   }
 
   public playSleeveSlide(enabled: boolean): void {
@@ -113,7 +244,6 @@ class VinylFoleyEngine {
     src.start();
   }
 
-  /** Starts/stops a subtle continuous vinyl surface crackle loop while the stylus is in the groove. */
   public setCrackleLoop(shouldPlay: boolean): void {
     if (shouldPlay === this.crackleActive) return;
     this.crackleActive = shouldPlay;
@@ -144,17 +274,14 @@ class VinylFoleyEngine {
       return;
     }
 
-    // 4-second looping buffer with warm surface hiss + sparse dust pops
     const dur = 4.0;
     const len = Math.floor(ctx.sampleRate * dur);
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = buf.getChannelData(0);
     let last = 0;
     for (let i = 0; i < len; i++) {
-      // Pink-ish warm floor
       const white = (Math.random() * 2 - 1) * 0.006;
       last = last * 0.86 + white * 0.14;
-      // Occasional tiny dust tick
       const pop = Math.random() > 0.9986 ? (Math.random() * 2 - 1) * 0.095 : 0;
       data[i] = last + pop;
     }

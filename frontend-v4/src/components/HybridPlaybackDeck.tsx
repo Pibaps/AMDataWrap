@@ -2,21 +2,19 @@
  * Bottom Transport Bar & True 3D Turntable-Embedded YouTube Player (via React Portal into CSS3DObject + YT.Player JS API).
  *
  * Refinements from user feedback:
- * - Renders the YouTube player inside `#turntable-css3d-screen` via `createPortal`, so it is a genuine
- *   3D plane glued onto the front of the turntable plinth (`CSS3DRenderer`) — it NEVER floats in 2D
- *   and NEVER collides with the crate or any UI element!
- * - Uses the official YouTube IFrame JS API (`window.YT.Player`) for bidirectional sync:
- *   * `getCurrentTime()` and `getDuration()` drive the bottom slider and the 3D tonearm groove radius in real time.
- *   * Dragging the bottom slider calls `ytPlayer.seekTo(seconds, true)` so the YouTube track and the 3D tonearm seek together!
- *   * Play/Pause buttons on the 3D turntable (`START · STOP`) or bottom bar call `ytPlayer.playVideo()` / `pauseVideo()`.
+ * - Real Volume Control from the 3D Linear Volume Fader (`volumePct` 0–100%):
+ *   syncs `ytPlayer.setVolume(volumePct)` and `audioRef.current.volume = volumePct / 100` in real time!
+ * - Automatic Sequential Vinyl Side Playback (`advanceToNextVinylTrack`):
+ *   when a track finishes on the vinyl record, the stylus automatically advances to the next track
+ *   in the groove sequence (and flips to the next side when the face finishes!).
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Disc3, Pause, Play, Radio, Tv } from "lucide-react";
 import { API, apiPost, formatDurationMs } from "../api/client";
 import { playbackClock, usePlaybackClock } from "../audio/playbackClock";
-import { togglePlayback } from "../audio/playTrack";
+import { playTrack, togglePlayback } from "../audio/playTrack";
 import { vinylFoley } from "../audio/vinylFoley";
 import { useV4Store } from "../store/useV4Store";
 import { Cover } from "./ui";
@@ -54,6 +52,7 @@ export const HybridPlaybackDeck: React.FC = () => {
   const isPlaying = useV4Store((s) => s.isPlaying);
   const setIsPlaying = useV4Store((s) => s.setIsPlaying);
   const setMotorOn = useV4Store((s) => s.setMotorOn);
+  const volumePct = useV4Store((s) => s.volumePct);
   const preferredSource = useV4Store((s) => s.preferredSource);
   const setPreferredSource = useV4Store((s) => s.setPreferredSource);
   const playbackError = useV4Store((s) => s.playbackError);
@@ -74,6 +73,60 @@ export const HybridPlaybackDeck: React.FC = () => {
   useEffect(() => {
     const el = document.getElementById("turntable-css3d-screen");
     if (el) setPortalTarget(el);
+  }, []);
+
+  /** Automatically chains to the next track on the spinning 12" vinyl when a track finishes! */
+  const advanceToNextVinylTrack = useCallback(() => {
+    const st = useV4Store.getState();
+    const platter = st.onPlatter;
+    const vCtx = st.nowPlaying?.vinyl;
+    if (!platter || !vCtx || platter.album_key !== vCtx.album_key) {
+      playbackClock.set(0, playbackClock.getDurationMs(), false);
+      st.setIsPlaying(false);
+      st.setMotorOn(false);
+      return;
+    }
+
+    const curSide = platter.sides[vCtx.sideIndex] || platter.sides[0];
+    const nextTrackIdx = vCtx.trackIndex + 1;
+    if (curSide && nextTrackIdx < curSide.tracks.length) {
+      const nextTrack = curSide.tracks[nextTrackIdx];
+      playTrack({
+        song_name: nextTrack.title,
+        artist_name: platter.artist_name,
+        album_name: platter.album_name,
+        artwork_url: platter.artwork_url,
+        track_key: nextTrack.track_key,
+        preview_url: nextTrack.preview_url,
+        duration_ms: nextTrack.duration_ms,
+        vinyl: { album_key: platter.album_key, sideIndex: vCtx.sideIndex, trackIndex: nextTrackIdx },
+      });
+      return;
+    }
+
+    // End of the side: automatically flip to the next side if available!
+    const nextSideIdx = vCtx.sideIndex + 1;
+    if (nextSideIdx < platter.sides.length && platter.sides[nextSideIdx].tracks.length > 0) {
+      vinylFoley.playRecordPlace(st.soundFx);
+      st.setActiveSideIndex(nextSideIdx);
+      const firstOnNextSide = platter.sides[nextSideIdx].tracks[0];
+      playTrack({
+        song_name: firstOnNextSide.title,
+        artist_name: platter.artist_name,
+        album_name: platter.album_name,
+        artwork_url: platter.artwork_url,
+        track_key: firstOnNextSide.track_key,
+        preview_url: firstOnNextSide.preview_url,
+        duration_ms: firstOnNextSide.duration_ms,
+        vinyl: { album_key: platter.album_key, sideIndex: nextSideIdx, trackIndex: 0 },
+      });
+      return;
+    }
+
+    // End of entire album: lift arm and stop motor
+    playbackClock.set(0, playbackClock.getDurationMs(), false);
+    st.setIsPlaying(false);
+    st.setMotorOn(false);
   }, []);
 
   // 1. Live Now-Playing WebSocket (`/ws/now-playing`)
@@ -151,7 +204,7 @@ export const HybridPlaybackDeck: React.FC = () => {
     };
   }, [setExtensionStatus]);
 
-  // 3. YouTube IFrame JS API lifecycle (bidirectional sync with bottom slider & 3D tonearm)
+  // 3. YouTube IFrame JS API lifecycle
   useEffect(() => {
     const isYt = nowPlaying?.source === "youtube" && Boolean(nowPlaying.video_id);
     if (!isYt || !portalTarget) return;
@@ -167,6 +220,7 @@ export const HybridPlaybackDeck: React.FC = () => {
           loadedVideoIdRef.current = vid;
           ytPlayerRef.current.loadVideoById(vid);
         }
+        ytPlayerRef.current.setVolume?.(useV4Store.getState().volumePct);
         if (useV4Store.getState().isPlaying) {
           ytPlayerRef.current.playVideo?.();
         }
@@ -191,16 +245,17 @@ export const HybridPlaybackDeck: React.FC = () => {
         },
         events: {
           onReady: (e: any) => {
+            e.target.setVolume?.(useV4Store.getState().volumePct);
             if (useV4Store.getState().isPlaying) {
               e.target.playVideo?.();
             }
           },
           onStateChange: (e: any) => {
-            // YT.PlayerState.PLAYING === 1, PAUSED === 2, ENDED === 0
             if (e.data === 1) {
               const durSec = e.target.getDuration?.() || 0;
               const curSec = e.target.getCurrentTime?.() || 0;
-              const durMs = durSec > 0 ? Math.round(durSec * 1000) : useV4Store.getState().nowPlaying?.duration_ms || 180_000;
+              const durMs =
+                durSec > 0 ? Math.round(durSec * 1000) : useV4Store.getState().nowPlaying?.duration_ms || 180_000;
               playbackClock.set(Math.round(curSec * 1000), durMs, true);
               useV4Store.getState().setIsPlaying(true);
               useV4Store.getState().setMotorOn(true);
@@ -210,9 +265,8 @@ export const HybridPlaybackDeck: React.FC = () => {
               useV4Store.getState().setIsPlaying(false);
               useV4Store.getState().setMotorOn(false);
             } else if (e.data === 0) {
-              playbackClock.set(0, playbackClock.getDurationMs(), false);
-              useV4Store.getState().setIsPlaying(false);
-              useV4Store.getState().setMotorOn(false);
+              // Track ended -> automatically advance to the next groove track on the vinyl!
+              advanceToNextVinylTrack();
             }
           },
         },
@@ -222,7 +276,7 @@ export const HybridPlaybackDeck: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [nowPlaying?.source, nowPlaying?.video_id, portalTarget]);
+  }, [nowPlaying?.source, nowPlaying?.video_id, portalTarget, advanceToNextVinylTrack]);
 
   // Sync play/pause toggle from 3D turntable START/STOP button or bottom bar to YT.Player
   useEffect(() => {
@@ -236,10 +290,25 @@ export const HybridPlaybackDeck: React.FC = () => {
     }
   }, [isPlaying, nowPlaying?.source]);
 
+  // Sync 3D Turntable Linear Volume Fader (`volumePct`) to both YouTube IFrame Player and HTML5 Audio!
+  useEffect(() => {
+    if (ytPlayerRef.current?.setVolume) {
+      try {
+        ytPlayerRef.current.setVolume(volumePct);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (audioRef.current) {
+      audioRef.current.volume = Math.max(0, Math.min(1, volumePct / 100));
+    }
+  }, [volumePct]);
+
   // 4. HTML5 30s Preview Audio sync
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    audio.volume = Math.max(0, Math.min(1, useV4Store.getState().volumePct / 100));
     if (nowPlaying?.source === "preview" && nowPlaying.preview_url) {
       const proxied = `/api/audio-proxy?url=${encodeURIComponent(nowPlaying.preview_url)}`;
       if (audio.src !== window.location.origin + proxied) {
@@ -274,7 +343,7 @@ export const HybridPlaybackDeck: React.FC = () => {
     requestSeekMs(null);
   }, [seekRequestMs, nowPlaying?.source, nowPlaying?.duration_ms, isPlaying, requestSeekMs]);
 
-  // 6. Poll real YT.Player / HTML5 audio currentTime every 400ms & auto-scrobble at 50%
+  // 6. Poll real YT.Player / HTML5 audio currentTime every 400ms & auto-advance at track end
   useEffect(() => {
     if (!nowPlaying || !isPlaying) {
       playbackClock.set(playbackClock.getPositionMs(), nowPlaying?.duration_ms || 0, false);
@@ -303,9 +372,7 @@ export const HybridPlaybackDeck: React.FC = () => {
       }
 
       if (pos >= dur && dur > 0) {
-        playbackClock.set(0, dur, false);
-        useV4Store.getState().setIsPlaying(false);
-        useV4Store.getState().setMotorOn(false);
+        advanceToNextVinylTrack();
         return;
       }
       playbackClock.set(pos, dur, true);
@@ -328,20 +395,25 @@ export const HybridPlaybackDeck: React.FC = () => {
     }, 400);
 
     return () => clearInterval(id);
-  }, [nowPlaying, isPlaying]);
+  }, [nowPlaying, isPlaying, advanceToNextVinylTrack]);
 
   const isYt = Boolean(nowPlaying?.source === "youtube" && nowPlaying.video_id);
   const effDur = durationMs || nowPlaying?.duration_ms || 0;
   const pct = effDur > 0 ? Math.min(100, Math.max(0, (positionMs / effDur) * 100)) : 0;
 
   const turntableScreenContent = (
-    <div className="w-[240px] h-[148px] flex flex-col bg-[#080605] text-ink">
+    <div
+      style={{ backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden" }}
+      className="w-[240px] h-[148px] flex flex-col bg-[#080605] text-ink"
+    >
       <div className="flex items-center justify-between px-2 py-0.5 bg-[#120e0b] border-b border-line text-[9px] num shrink-0">
         <span className="flex items-center gap-1 text-amber">
           <Tv className="w-2.5 h-2.5" />
           PLATINE SL-1200 · YT
         </span>
-        <span className="text-ink-3">{formatDurationMs(positionMs)}</span>
+        <span className="text-ink-3">
+          VOL {volumePct}% · {formatDurationMs(positionMs)}
+        </span>
       </div>
       <div className="relative flex-1 bg-black overflow-hidden">
         <div ref={ytHostRef} className={`w-full h-full ${isYt ? "block" : "hidden"}`} />
@@ -367,10 +439,16 @@ export const HybridPlaybackDeck: React.FC = () => {
 
   return (
     <>
-      <audio ref={audioRef} className="hidden" />
+      <audio
+        ref={audioRef}
+        className="hidden"
+        onEnded={() => {
+          advanceToNextVinylTrack();
+        }}
+      />
       {portalTarget && createPortal(turntableScreenContent, portalTarget)}
 
-      {/* Bottom Transport Bar (synchronized bidirectionally with YouTube IFrame JS API & 3D Tonearm) */}
+      {/* Bottom Transport Bar */}
       <footer className="fixed bottom-0 inset-x-0 z-40 h-14 bg-bg-2 border-t border-line px-4 sm:px-7 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0 w-1/3">
           {nowPlaying ? (
@@ -387,7 +465,7 @@ export const HybridPlaybackDeck: React.FC = () => {
           ) : (
             <div className="flex items-center gap-2 text-xs text-ink-3">
               <Disc3 className="w-4 h-4 text-ink-3" />
-              <span className="truncate">Platine en veille — clique sur START ou sur un vinyle dans le bac 3D</span>
+              <span className="truncate">Platine en veille — clique sur START ou sur un sillon du vinyle 3D</span>
             </div>
           )}
         </div>
@@ -395,7 +473,7 @@ export const HybridPlaybackDeck: React.FC = () => {
         <div className="flex items-center gap-3 flex-1 max-w-xl">
           <button
             onClick={() => {
-              vinylFoley.playClick(soundFx);
+              vinylFoley.playStartStopButton(soundFx);
               togglePlayback();
             }}
             disabled={!nowPlaying}
@@ -428,7 +506,7 @@ export const HybridPlaybackDeck: React.FC = () => {
 
         <div className="hidden sm:flex items-center justify-end gap-2 w-1/3 text-xs">
           {playbackError && <span className="text-ember text-[11px] truncate max-w-[180px]">{playbackError}</span>}
-
+          <span className="num text-[11px] text-ink-3 mr-1">VOL {volumePct}%</span>
           <button
             onClick={() => setPreferredSource(preferredSource === "youtube" ? "preview" : "youtube")}
             className="btn text-xs"

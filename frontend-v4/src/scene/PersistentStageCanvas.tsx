@@ -1,24 +1,26 @@
 /**
  * Persistent 3D Listening Room ("Salon d'écoute") — AMDataWrap V4.
  *
- * High-efficiency, authentic 3D architecture (< 120 MB RAM, 60 FPS, zero visual collisions):
- * 1. True 3D CSS3D YouTube OLED Display mounted ON the turntable plinth:
- *    - Uses Three.js `CSS3DRenderer` + `CSS3DObject` attached directly to `turntableGroup`!
- *    - The YouTube screen is a genuine 3D plane tilted on the front-right of the turntable chassis:
- *      it rotates in true 3D perspective with the turntable and NEVER floats or collides with the 2D UI.
- * 2. Authentic Open-Top Smoked-Acrylic Dust Cover ("Capot"):
- *    - 5 thin clear acrylic panels (top + 4 sides, open bottom) with crisp metallic edge lines,
- *      rear metal hinge brackets, and subtle specular reflection — zero ugly opaque solid-box look!
- * 3. Fixed 3D Sleeve Inspection & Disc Slide-Out Hierarchy:
- *    - The 12" vinyl disc is parented INSIDE `inspectSleeveGroup` so it rotates together with the jacket.
- *    - Flipping the sleeve to read the verso automatically slides the disc back inside the jacket first
- *      so it never clips or floats in mid-air!
- * 4. Physical Plinth Button Press & Crate Navigation:
- *    - Clicking `START · STOP`, `33`, `45`, `POWER`, or the pitch fader physically depresses/moves
- *      the 3D mesh with a spring animation and tactile click.
- *    - Clicking any sleeve in the 3D wooden crate focuses it; clicking the focused sleeve lifts it out;
- *      3D `<` and `>` brass paddles on the sides of the crate (plus mouse wheel / arrow keys) make flipping
- *      through the crate immediately obvious.
+ * Refinements from user feedback:
+ * 1. Physical Crate Geometry (Zero Box Collision + Exclusive Presence + Physical Pull-Out/Return):
+ *    - Sleeves inside the oak crate stand safely behind the front oak panel (`z` from `+0.72` to `-1.12`)
+ *      with a gentle lean (`+0.26 rad` max) so they NEVER poke through the front wooden wall!
+ *    - When an album is currently placed on the turntable platter & wooden easel on the left (`onPlatter`),
+ *      its slot in the right crate is physically empty (`visible = false`) — a record cannot be in two places at once!
+ *    - Clicking a sleeve in the crate slides it physically UP and OUT of the crate (`INSPECT`),
+ *      and clicking the crate or the "Ranger dans le bac" 3D action slides it smoothly back into its slot.
+ * 2. 100% 3D Interactions (Zero 2D Pop-up Menu when inspecting or playing a vinyl):
+ *    - No 2D tracklist drawer pops up on the right anymore!
+ *    - All tracks are selectable directly on the 3D vinyl record (hovering any groove band on the platter
+ *      highlights the track title & number in the tooltip; clicking drops the diamond stylus onto that track)
+ *      or by flipping the 3D jacket to read its printed back cover.
+ * 3. Opaque Back-Face Culling on the CSS3D YouTube Plinth Screen:
+ *    - `backfaceVisibility: "hidden"` on the CSS3D screen + dynamic dot-product visibility check with the camera
+ *      so looking at the turntable from behind shows only the solid metal housing, never the iframe through the back!
+ * 4. Real Interactive 3D Linear Volume Fader (`VOLUME · GAIN 0–100%`) on the Right of the Plinth:
+ *    - Clicking or dragging along the 3D fader slot slides the machined aluminum fader knob smoothly
+ *      and controls the real YouTube / Audio volume in real time (`0%` to `100%`) with tactile detent ticks.
+ * 5. Unique, Logical Mechanical Foley Sounds for every 3D interaction.
  */
 
 import React, { useEffect, useRef } from "react";
@@ -33,6 +35,7 @@ import {
   apiGet,
   buildQueryParams,
   coverUrl,
+  formatDurationMs,
   type TurntableFinish,
   type VinylCrateAlbum,
   type VinylDetail,
@@ -71,6 +74,10 @@ const ARM_PIVOT_X = 1.18;
 const ARM_PIVOT_Z = -1.27;
 const ARM_EFFECTIVE_LEN = 2.18;
 
+// Fader Z range in turntableGroup local coordinates
+const FADER_Z_TOP = 0.25; // 100% volume
+const FADER_Z_BOT = 1.45; // 0% volume
+
 function tonearmYawForRadius(r: number): number {
   const dx = PLATTER_X - ARM_PIVOT_X;
   const dz = PLATTER_Z - ARM_PIVOT_Z;
@@ -82,6 +89,26 @@ function tonearmYawForRadius(r: number): number {
   const alpha = Math.acos(cosAlpha);
   const baseAngle = Math.atan2(dx, dz);
   return baseAngle + alpha * 0.82;
+}
+
+/** Given a radius on the platter, finds which track index of the active side sits at that groove radius. */
+function findTrackAtRadius(v: VinylDetail | null, sideIndex: number, r: number): { index: number; track: any } | null {
+  if (!v) return null;
+  const side = v.sides[sideIndex] || v.sides[0];
+  const tracks = side?.tracks || [];
+  if (!tracks.length) return null;
+  const frac = Math.min(0.999, Math.max(0, (GROOVE_OUTER_R - r) / (GROOVE_OUTER_R - GROOVE_INNER_R)));
+  const totalSideMs = Math.max(1, tracks.reduce((a, t) => a + (t.duration_ms || 180_000), 0));
+  const targetMs = frac * totalSideMs;
+  let acc = 0;
+  for (let i = 0; i < tracks.length; i++) {
+    const d = tracks[i].duration_ms || 180_000;
+    if (targetMs <= acc + d || i === tracks.length - 1) {
+      return { index: i, track: tracks[i] };
+    }
+    acc += d;
+  }
+  return { index: 0, track: tracks[0] };
 }
 
 const ARM_REST_YAW = -0.02;
@@ -124,7 +151,7 @@ const FINISH_CONFIG: Record<
 };
 
 const MAX_CRATE_SLEEVES = 20;
-const SLEEVE_SIZE = 2.18;
+const SLEEVE_SIZE = 2.12;
 const SLEEVE_THICK = 0.042;
 const CRATE_SORTS = ["top", "recent", "era", "genre", "random"];
 
@@ -145,7 +172,7 @@ export const PersistentStageCanvas: React.FC = () => {
   const vinylStage = useV4Store((s) => s.vinylStage);
   const finish = useV4Store((s) => s.finish);
   const rpm = useV4Store((s) => s.rpm);
-  const pitchPct = useV4Store((s) => s.pitchPct);
+  const volumePct = useV4Store((s) => s.volumePct);
   const lidOpen = useV4Store((s) => s.lidOpen);
   const lampOn = useV4Store((s) => s.lampOn);
   const stylusLightOn = useV4Store((s) => s.stylusLightOn);
@@ -168,6 +195,8 @@ export const PersistentStageCanvas: React.FC = () => {
     armPitch: -0.09,
     targetArmPitch: -0.09,
     hoveredSlot: -1,
+    draggingFader: false,
+    lastDetentBucket: -1,
     keysPressed: new Set<string>(),
   });
 
@@ -203,7 +232,10 @@ export const PersistentStageCanvas: React.FC = () => {
     lampBulbMat?: THREE.MeshBasicMaterial;
     stylusSpot?: THREE.SpotLight;
     stylusLensMat?: THREE.MeshBasicMaterial;
-    pitchKnob?: THREE.Mesh;
+    faderKnob?: THREE.Mesh;
+    faderSlot?: THREE.Mesh;
+    oledConsoleGroup?: THREE.Group;
+    crateGroup?: THREE.Group;
     crateSlots: CrateSleeveSlot[];
     inspectGroup?: THREE.Group;
     inspectSleeveGroup?: THREE.Group;
@@ -234,7 +266,6 @@ export const PersistentStageCanvas: React.FC = () => {
       const placeholder = { tex: fallbackTex, img: null, accent: "#b8723c" };
       cache.set(albumKey, placeholder);
     }
-    // Always notify with current cached texture immediately so callers never stay blank
     onReady(cache.get(albumKey)!);
 
     const proxied = coverUrl(artworkUrl, 256);
@@ -285,7 +316,6 @@ export const PersistentStageCanvas: React.FC = () => {
     container.innerHTML = "";
     container.appendChild(renderer.domElement);
 
-    // CSS3DRenderer renders the YouTube player in TRUE 3D perspective glued to the turntable plinth!
     const css3dRenderer = new CSS3DRenderer();
     css3dRenderer.setSize(width, height);
     css3dRenderer.domElement.style.position = "absolute";
@@ -395,7 +425,7 @@ export const PersistentStageCanvas: React.FC = () => {
     slatGroup.add(slatInst);
     scene.add(slatGroup);
 
-    // Interactive Brass Studio Lamp on the far right
+    // Interactive Brass Studio Lamp
     const lampGroup = new THREE.Group();
     lampGroup.position.set(5.6, -0.06, -1.75);
     const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.44, 0.1, 24), brassMat);
@@ -458,12 +488,12 @@ export const PersistentStageCanvas: React.FC = () => {
     easelSleeveMesh.castShadow = true;
     easelSleeveMesh.userData = {
       action: "inspect-platter",
-      hint: "Chevalet Now Playing · Cliquer pour inspecter la pochette recto/verso en 3D",
+      hint: "Chevalet Now Playing · Cliquer pour soulever la pochette en 3D et voir son verso",
     };
     easelGroup.add(easelSleeveMesh);
 
     // =========================================================================
-    // C. DETAILED DIRECT-DRIVE TURNTABLE + FIXED 3D CSS3D YOUTUBE SCREEN
+    // C. DETAILED DIRECT-DRIVE TURNTABLE + OPAQUE-BACK 3D CSS3D YOUTUBE SCREEN
     // =========================================================================
     const turntableGroup = new THREE.Group();
     turntableGroup.position.set(-1.05, -0.06, 0.18);
@@ -571,7 +601,7 @@ export const PersistentStageCanvas: React.FC = () => {
     recordMesh.receiveShadow = true;
     recordMesh.userData = {
       action: "groove-seek",
-      hint: "Sillons 12\" · Cliquer n'importe où sur le vinyle pour y poser le diamant",
+      hint: "Sillons 12\" · Cliquer sur un sillon pour choisir directement la piste",
     };
     platterSpinGroup.add(recordMesh);
 
@@ -598,7 +628,7 @@ export const PersistentStageCanvas: React.FC = () => {
     labelMesh.position.y = 0.147;
     labelMesh.userData = {
       action: "flip-disc-side",
-      hint: "Macaron central · Cliquer pour retourner le vinyle (Face A / Face B)",
+      hint: "Macaron central · Cliquer pour retourner le vinyle (Face A ↔ Face B)",
     };
     platterSpinGroup.add(labelMesh);
 
@@ -611,13 +641,13 @@ export const PersistentStageCanvas: React.FC = () => {
     turntableGroup.add(adapter45);
 
     // =========================================================================
-    // PHYSICAL TURNTABLE CONTROLS (WITH LARGE HITBOXES & TACTILE PRESS ANIMATION)
+    // PHYSICAL TURNTABLE CONTROLS & REAL DRAGGABLE VOLUME FADER (0–100%)
     // =========================================================================
     const powerTurret = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.15, 20), darkMetalMat);
     powerTurret.position.set(-1.98, 0.46, 1.05);
     powerTurret.userData = {
-      action: "toggle-start",
-      hint: "Commutateur Power / Start · Cliquer pour démarrer ou arrêter la platine",
+      action: "toggle-power",
+      hint: "Commutateur rotatif POWER · Démarrer / couper le moteur quartz",
     };
     turntableGroup.add(powerTurret);
 
@@ -631,7 +661,6 @@ export const PersistentStageCanvas: React.FC = () => {
     strobeWindow.position.set(-1.84, 0.45, 1.05);
     turntableGroup.add(strobeWindow);
 
-    // Die-cast bezel around START/STOP button + button cap
     const startBezel = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.03, 0.38), brushedAluMat);
     startBezel.position.set(-1.45, 0.41, 1.48);
     turntableGroup.add(startBezel);
@@ -645,7 +674,7 @@ export const PersistentStageCanvas: React.FC = () => {
     startBtn.position.set(-1.45, 0.435, 1.48);
     startBtn.userData = {
       action: "toggle-start",
-      hint: "Bouton START · STOP · Cliquer pour démarrer / arrêter le plateau et la musique",
+      hint: "Bouton START · STOP · Démarrer ou mettre en pause le vinyle",
     };
     turntableGroup.add(startBtn);
 
@@ -654,7 +683,7 @@ export const PersistentStageCanvas: React.FC = () => {
       new THREE.MeshStandardMaterial({ map: makeButtonTexture("33", "#262320", "#ede2d2"), roughness: 0.35 })
     );
     btn33.position.set(-0.98, 0.43, 1.48);
-    btn33.userData = { action: "rpm-33", hint: "Bouton 33⅓ RPM · Cliquer pour passer en 33 tours" };
+    btn33.userData = { action: "rpm-33", hint: "Micro-switch 33⅓ RPM" };
     turntableGroup.add(btn33);
 
     const led33Mat = new THREE.MeshStandardMaterial({
@@ -671,7 +700,7 @@ export const PersistentStageCanvas: React.FC = () => {
       new THREE.MeshStandardMaterial({ map: makeButtonTexture("45", "#262320", "#ede2d2"), roughness: 0.35 })
     );
     btn45.position.set(-0.68, 0.43, 1.48);
-    btn45.userData = { action: "rpm-45", hint: "Bouton 45 RPM · Cliquer pour passer en 45 tours" };
+    btn45.userData = { action: "rpm-45", hint: "Micro-switch 45 RPM" };
     turntableGroup.add(btn45);
 
     const led45Mat = new THREE.MeshStandardMaterial({
@@ -688,7 +717,7 @@ export const PersistentStageCanvas: React.FC = () => {
     stylusLampTower.position.set(0.55, 0.45, 1.16);
     stylusLampTower.userData = {
       action: "toggle-stylus-light",
-      hint: "Lampe cible du diamant · Cliquer pour allumer / éteindre l'éclairage rasant",
+      hint: "Lampe cible du diamant · Allumer / éteindre le faisceau rasant",
     };
     turntableGroup.add(stylusLampTower);
 
@@ -703,22 +732,25 @@ export const PersistentStageCanvas: React.FC = () => {
     turntableGroup.add(stylusSpot);
     turntableGroup.add(stylusSpot.target);
 
-    // Pitch Fader Slot & Knob
-    const pitchSlot = new THREE.Mesh(
-      new THREE.BoxGeometry(0.16, 0.02, 1.38),
+    // Real Draggable Linear Volume Fader (0% to 100%) on the right side of the plinth!
+    const faderSlot = new THREE.Mesh(
+      new THREE.BoxGeometry(0.24, 0.025, 1.38),
       new THREE.MeshStandardMaterial({ color: 0x090807, roughness: 0.9 })
     );
-    pitchSlot.position.set(1.85, 0.405, 0.85);
-    pitchSlot.userData = {
-      action: "cycle-pitch",
-      hint: "Fader de Pitch (±8%) · Cliquer pour faire glisser le pitch (-6% / -3% / 0% / +3% / +6%)",
+    faderSlot.position.set(1.85, 0.405, 0.85);
+    faderSlot.userData = {
+      action: "volume-fader",
+      hint: `Fader VOLUME · GAIN (${useV4Store.getState().volumePct}%) · Cliquer ou glisser pour régler le volume du tourne-disque`,
     };
-    turntableGroup.add(pitchSlot);
+    turntableGroup.add(faderSlot);
 
-    const pitchKnob = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.12, 0.18), brushedAluMat);
-    pitchKnob.position.set(1.85, 0.45, 0.85);
-    pitchKnob.userData = pitchSlot.userData;
-    turntableGroup.add(pitchKnob);
+    const initVolRatio = useV4Store.getState().volumePct / 100;
+    const initFaderZ = FADER_Z_BOT - initVolRatio * (FADER_Z_BOT - FADER_Z_TOP);
+
+    const faderKnob = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.13, 0.2), brushedAluMat);
+    faderKnob.position.set(1.85, 0.46, initFaderZ);
+    faderKnob.userData = faderSlot.userData;
+    turntableGroup.add(faderKnob);
 
     const quartzLed = new THREE.Mesh(
       new THREE.CylinderGeometry(0.028, 0.028, 0.02, 12),
@@ -728,10 +760,8 @@ export const PersistentStageCanvas: React.FC = () => {
     turntableGroup.add(quartzLed);
 
     // =========================================================================
-    // FIXED 3D CSS3D YOUTUBE CONSOLE ON THE FRONT-CENTER OF THE TURNTABLE PLINTH!
+    // FIXED 3D CSS3D YOUTUBE CONSOLE WITH OPAQUE BACK-FACE CULLING
     // =========================================================================
-    // It sits cleanly on the front bevel of the turntable plinth between the 45 button and the pitch fader,
-    // tilted at -36° so it never collides with the tonearm, crate, or 2D buttons, and is 100% locked in 3D space!
     const oledConsoleGroup = new THREE.Group();
     oledConsoleGroup.position.set(-0.5, -0.06, 0.18 + 1.88);
     oledConsoleGroup.rotation.x = -0.62;
@@ -743,9 +773,11 @@ export const PersistentStageCanvas: React.FC = () => {
     const oledBrassFrame = new THREE.Mesh(new RoundedBoxGeometry(1.36, 0.82, 0.084, 2, 0.015), brassMat);
     oledConsoleGroup.add(oledBrassFrame);
 
-    // Attach the actual DOM container of the YouTube player as a CSS3DObject at the exact same 3D transform!
+    // Ensure CSS backface-visibility is hidden so the DOM iframe is NEVER visible from behind the turntable
+    screenDom.style.backfaceVisibility = "hidden";
+    (screenDom.style as any).webkitBackfaceVisibility = "hidden";
+
     const css3dObject = new CSS3DObject(screenDom);
-    // 240x148 px DOM element scaled by 0.00535 = 1.28 x 0.79 world units inside the 1.36 x 0.82 brass frame!
     css3dObject.scale.set(0.00535, 0.00535, 0.00535);
     css3dObject.position.copy(oledConsoleGroup.position);
     css3dObject.position.z += 0.036;
@@ -895,7 +927,7 @@ export const PersistentStageCanvas: React.FC = () => {
     headshellGroup.add(cantilever);
 
     // =========================================================================
-    // AUTHENTIC OPEN-BOTTOM SMOKED-ACRYLIC DUST COVER (5 thin panels + bevel edges)
+    // AUTHENTIC OPEN-BOTTOM SMOKED-ACRYLIC DUST COVER
     // =========================================================================
     const hingeMat = new THREE.MeshStandardMaterial({ color: 0x272422, roughness: 0.4, metalness: 0.8 });
     [-1.45, 1.45].forEach((hx) => {
@@ -924,7 +956,6 @@ export const PersistentStageCanvas: React.FC = () => {
       side: THREE.DoubleSide,
     });
 
-    // Top panel + 4 side walls (no bottom face, so no double-layered floor reflection!)
     const lidTopPanel = new THREE.Mesh(new THREE.BoxGeometry(lidW, lidT, lidD), acrylicMat);
     lidTopPanel.position.set(0, lidH, lidD / 2);
     lidTopPanel.userData = {
@@ -938,7 +969,6 @@ export const PersistentStageCanvas: React.FC = () => {
     lidFrontPanel.userData = lidTopPanel.userData;
     lidPivot.add(lidFrontPanel);
 
-    // Crisp acrylic refracting edges + front finger grip tab
     const lidEdgesGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(lidW, lidH, lidD));
     const lidEdges = new THREE.LineSegments(
       lidEdgesGeo,
@@ -953,7 +983,7 @@ export const PersistentStageCanvas: React.FC = () => {
     lidPivot.add(lidHandle);
 
     // =========================================================================
-    // D. REAL PHYSICAL 3D WOODEN VINYL CRATE + INTUITIVE 3D `<` / `>` BRASS PADDLES
+    // D. REAL PHYSICAL 3D WOODEN VINYL CRATE (NO SMALL BUTTONS, ZERO FRONT WALL COLLISION!)
     // =========================================================================
     const crateGroup = new THREE.Group();
     crateGroup.position.set(3.25, -0.06, 0.18);
@@ -964,86 +994,63 @@ export const PersistentStageCanvas: React.FC = () => {
     const oakMat = new THREE.MeshStandardMaterial({ map: oakTex, roughness: 0.55, metalness: 0.05 });
 
     const CRATE_W = 2.48;
-    const CRATE_H = 1.48;
-    const CRATE_D = 2.86;
+    const CRATE_H = 1.42;
+    const CRATE_D = 3.05;
     const WALL_T = 0.09;
 
     const crateBottom = new THREE.Mesh(new THREE.BoxGeometry(CRATE_W, WALL_T, CRATE_D), oakMat);
     crateBottom.position.y = WALL_T / 2;
     crateBottom.castShadow = true;
     crateBottom.receiveShadow = true;
+    crateBottom.userData = {
+      action: "return-to-crate",
+      hint: "Bac en chêne · Cliquer pour ranger la pochette inspectée dans le bac",
+    };
     crateGroup.add(crateBottom);
 
-    const crateFront = new THREE.Mesh(new THREE.BoxGeometry(CRATE_W, CRATE_H * 0.72, WALL_T), oakMat);
-    crateFront.position.set(0, (CRATE_H * 0.72) / 2, CRATE_D / 2 - WALL_T / 2);
+    const crateFront = new THREE.Mesh(new THREE.BoxGeometry(CRATE_W, CRATE_H * 0.65, WALL_T), oakMat);
+    crateFront.position.set(0, (CRATE_H * 0.65) / 2, CRATE_D / 2 - WALL_T / 2);
     crateFront.castShadow = true;
     crateFront.receiveShadow = true;
+    crateFront.userData = crateBottom.userData;
     crateGroup.add(crateFront);
 
     const crateBack = new THREE.Mesh(new THREE.BoxGeometry(CRATE_W, CRATE_H, WALL_T), oakMat);
     crateBack.position.set(0, CRATE_H / 2, -CRATE_D / 2 + WALL_T / 2);
     crateBack.castShadow = true;
     crateBack.receiveShadow = true;
+    crateBack.userData = crateBottom.userData;
     crateGroup.add(crateBack);
 
     [-CRATE_W / 2 + WALL_T / 2, CRATE_W / 2 - WALL_T / 2].forEach((sx) => {
       for (let si = 0; si < 3; si++) {
-        const slat = new THREE.Mesh(new THREE.BoxGeometry(WALL_T, 0.36, CRATE_D - WALL_T * 2), oakMat);
-        slat.position.set(sx, 0.26 + si * 0.44, 0);
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(WALL_T, 0.35, CRATE_D - WALL_T * 2), oakMat);
+        slat.position.set(sx, 0.25 + si * 0.42, 0);
         slat.castShadow = true;
         slat.receiveShadow = true;
+        slat.userData = crateBottom.userData;
         crateGroup.add(slat);
       }
     });
 
-    // Brass Index Plate + 3D Prev (`◀`) & Next (`▶`) Brass Buttons right on the front of the crate!
-    const cratePlate = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.26, 0.025), brassMat);
-    cratePlate.position.set(0, 0.56, CRATE_D / 2 + 0.008);
+    // Clean Brass Index Plate on the front of the crate (no small `<` / `>` buttons!)
+    const cratePlate = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.25, 0.025), brassMat);
+    cratePlate.position.set(0, 0.48, CRATE_D / 2 + 0.008);
     cratePlate.userData = {
       action: "cycle-crate-sort",
-      hint: "Plaque du bac en chêne · Cliquer pour changer le tri (Top / Récents / Décennie / Genre / Aléatoire)",
+      hint: "Plaque en laiton · Cliquer pour trier le bac (Top / Récents / Décennie / Genre / Aléatoire)",
     };
     crateGroup.add(cratePlate);
     const crateLabelInner = new THREE.Mesh(
-      new THREE.BoxGeometry(0.88, 0.19, 0.028),
+      new THREE.BoxGeometry(0.88, 0.18, 0.028),
       new THREE.MeshStandardMaterial({
         map: makeButtonTexture("BAC  LP  33⅓", "#1a1410", "#e9dec9"),
         roughness: 0.5,
       })
     );
-    crateLabelInner.position.set(0, 0.56, CRATE_D / 2 + 0.01);
+    crateLabelInner.position.set(0, 0.48, CRATE_D / 2 + 0.01);
     crateLabelInner.userData = cratePlate.userData;
     crateGroup.add(crateLabelInner);
-
-    // 3D Previous Vinyle (`◀`) button on left front of crate
-    const cratePrevBtn = new THREE.Mesh(
-      new THREE.BoxGeometry(0.32, 0.26, 0.03),
-      new THREE.MeshStandardMaterial({
-        map: makeButtonTexture("◀", "#1a1410", "#e8873e"),
-        roughness: 0.4,
-      })
-    );
-    cratePrevBtn.position.set(-0.76, 0.56, CRATE_D / 2 + 0.01);
-    cratePrevBtn.userData = {
-      action: "crate-prev",
-      hint: "Vinyle précédent dans le bac (ou flèche ← / molette)",
-    };
-    crateGroup.add(cratePrevBtn);
-
-    // 3D Next Vinyle (`▶`) button on right front of crate
-    const crateNextBtn = new THREE.Mesh(
-      new THREE.BoxGeometry(0.32, 0.26, 0.03),
-      new THREE.MeshStandardMaterial({
-        map: makeButtonTexture("▶", "#1a1410", "#e8873e"),
-        roughness: 0.4,
-      })
-    );
-    crateNextBtn.position.set(0.76, 0.56, CRATE_D / 2 + 0.01);
-    crateNextBtn.userData = {
-      action: "crate-next",
-      hint: "Vinyle suivant dans le bac (ou flèche → / molette)",
-    };
-    crateGroup.add(crateNextBtn);
 
     const crateSlots: CrateSleeveSlot[] = [];
     const sleeveGeo = new THREE.BoxGeometry(SLEEVE_SIZE, SLEEVE_SIZE, SLEEVE_THICK);
@@ -1065,20 +1072,22 @@ export const PersistentStageCanvas: React.FC = () => {
       lampStem,
       lampShade,
       stylusLampTower,
-      pitchSlot,
-      pitchKnob,
+      faderSlot,
+      faderKnob,
       cueLever,
       sTubeMesh,
       headshellTop,
       cratePlate,
       crateLabelInner,
-      cratePrevBtn,
-      crateNextBtn,
+      crateFront,
+      crateBack,
     ];
 
     for (let i = 0; i < MAX_CRATE_SLEEVES; i++) {
       const pivot = new THREE.Group();
-      const zPos = CRATE_D / 2 - 0.34 - i * 0.095;
+      // Start at z = +0.72 (well behind the front wall at z = +1.48) so even when leaning forward (+0.26 rad),
+      // the top edge of the sleeve (z + 2.12 * sin(0.26) = 0.72 + 0.54 = 1.26 < 1.44) NEVER touches the front wood!
+      const zPos = 0.72 - i * 0.092;
       pivot.position.set((Math.sin(i * 2.1) - 0.5) * 0.02, 0.1, zPos);
       crateGroup.add(pivot);
 
@@ -1103,7 +1112,7 @@ export const PersistentStageCanvas: React.FC = () => {
       mesh.userData = {
         action: "crate-sleeve",
         slotIndex: i,
-        hint: "Pochette LP 12\" · Cliquer pour sélectionner ou sortir du bac (molette pour feuilleter)",
+        hint: "Pochette LP 12\" · Cliquer pour la sortir physiquement du bac (molette pour feuilleter)",
       };
       pivot.add(mesh);
 
@@ -1112,7 +1121,7 @@ export const PersistentStageCanvas: React.FC = () => {
     }
 
     // =========================================================================
-    // E. 3D FLOATING SLEEVE INSPECTOR (DISC PARENTED INSIDE SLEEVE GROUP -> ZERO CLIPPING!)
+    // E. 3D FLOATING SLEEVE INSPECTOR (PULLS PHYSICALLY OUT OF THE CRATE & RETURNS TO IT)
     // =========================================================================
     const inspectGroup = new THREE.Group();
     inspectGroup.position.set(0.3, 1.95, 2.35);
@@ -1140,20 +1149,18 @@ export const PersistentStageCanvas: React.FC = () => {
     inspectSleeveMesh.castShadow = true;
     inspectSleeveMesh.userData = {
       action: "flip-inspect-sleeve",
-      hint: "Pochette 12\" · Cliquer sur la pochette pour la retourner (Recto / Verso tracklist)",
+      hint: "Pochette 12\" · Cliquer sur la pochette pour la retourner (Recto ↔ Verso tracklist) · Cliquer sur le bac pour la ranger",
     };
     inspectSleeveGroup.add(inspectSleeveMesh);
     interactables.push(inspectSleeveMesh);
 
-    // Disc is a child of inspectSleeveGroup at z = 0 (inside the cardboard pocket) so it rotates with the sleeve
-    // and never pokes through the front or back faces!
     const inspectDiscMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.01, 1.01, 0.016, 48), recordMat);
     inspectDiscMesh.rotation.x = Math.PI / 2;
     inspectDiscMesh.position.set(0.0, 0, 0);
     inspectDiscMesh.castShadow = true;
     inspectDiscMesh.userData = {
       action: "place-on-platter",
-      hint: "Disque vinyle 12\" · Cliquer sur le disque pour le poser sur le plateau SL-1200 et lancer la lecture",
+      hint: "Disque vinyle 12\" · Cliquer sur le disque pour le poser sur le plateau SL-1200 et lancer la Face A",
     };
     inspectSleeveGroup.add(inspectDiscMesh);
     interactables.push(inspectDiscMesh);
@@ -1194,7 +1201,10 @@ export const PersistentStageCanvas: React.FC = () => {
       lampBulbMat,
       stylusSpot,
       stylusLensMat,
-      pitchKnob,
+      faderKnob,
+      faderSlot,
+      oledConsoleGroup,
+      crateGroup,
       crateSlots,
       inspectGroup,
       inspectSleeveGroup,
@@ -1207,7 +1217,7 @@ export const PersistentStageCanvas: React.FC = () => {
     };
 
     // =========================================================================
-    // F. RAYCASTING & FREE-CAM INTERACTION
+    // F. RAYCASTING, DRAGGABLE 3D VOLUME FADER & FREE-CAM INTERACTION
     // =========================================================================
     const raycaster = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
@@ -1219,12 +1229,29 @@ export const PersistentStageCanvas: React.FC = () => {
       ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     };
 
+    const applyVolumeFromWorldPoint = (worldPt: THREE.Vector3) => {
+      const localPt = turntableGroup.worldToLocal(worldPt.clone());
+      const clampedZ = Math.max(FADER_Z_TOP, Math.min(FADER_Z_BOT, localPt.z));
+      const ratio = 1 - (clampedZ - FADER_Z_TOP) / (FADER_Z_BOT - FADER_Z_TOP);
+      const vol = Math.round(ratio * 100);
+      faderKnob.position.z = clampedZ;
+      const st = useV4Store.getState();
+      if (st.volumePct !== vol) {
+        st.setVolumePct(vol);
+        st.setHoveredHint(`VOLUME · GAIN : ${vol}%`);
+        const bucket = Math.floor(vol / 10);
+        if (bucket !== runtimeRef.current.lastDetentBucket) {
+          runtimeRef.current.lastDetentBucket = bucket;
+          vinylFoley.playFaderDetent(st.soundFx);
+        }
+      }
+    };
+
     const filterValidHit = (hits: THREE.Intersection[]) =>
       hits.find((h) => {
         if (!h.object.visible || h.object.parent?.visible === false || h.object.parent?.parent?.visible === false) {
           return false;
         }
-        // When the dust cover is open, only clicking its upper raised edge closes it; clicks on the lower area pass through to the platter & buttons!
         if ((h.object === lidTopPanel || h.object === lidFrontPanel) && useV4Store.getState().lidOpen && h.point.y < 1.25) {
           return false;
         }
@@ -1235,6 +1262,16 @@ export const PersistentStageCanvas: React.FC = () => {
       if (!runtimeRef.current.isStudio) return;
       updateNdc(e.clientX, e.clientY);
       raycaster.setFromCamera(ndc, camera);
+
+      // Live 3D Volume Fader dragging!
+      if (runtimeRef.current.draggingFader) {
+        const faderHits = raycaster.intersectObjects([faderSlot, plinthBody], false);
+        if (faderHits.length > 0) {
+          applyVolumeFromWorldPoint(faderHits[0].point);
+        }
+        return;
+      }
+
       const hits = raycaster.intersectObjects(threeRef.current.interactables, false);
       const hit = filterValidHit(hits);
       if (hit) {
@@ -1242,12 +1279,28 @@ export const PersistentStageCanvas: React.FC = () => {
         const act = hit.object.userData.action;
         runtimeRef.current.hoveredSlot = act === "crate-sleeve" ? hit.object.userData.slotIndex : -1;
         let hint: string | null = hit.object.userData.hint || null;
+        const st = useV4Store.getState();
         if (act === "crate-sleeve") {
-          const alb = useV4Store.getState().crate[hit.object.userData.slotIndex];
-          if (alb) hint = `${alb.album_name} — ${alb.artist_name} (${alb.plays} écoutes) · Cliquer pour ouvrir`;
+          const alb = st.crate[hit.object.userData.slotIndex];
+          if (alb) hint = `${alb.album_name} — ${alb.artist_name} (${alb.plays} écoutes) · Cliquer pour sortir du bac`;
+        } else if (act === "groove-seek" && st.onPlatter) {
+          // Live groove track preview on the 3D vinyl record!
+          const localPt = platterSpinGroup.worldToLocal(hit.point.clone());
+          const r = Math.hypot(localPt.x, localPt.z);
+          if (r >= GROOVE_INNER_R && r <= GROOVE_OUTER_R) {
+            const found = findTrackAtRadius(st.onPlatter, st.activeSideIndex, r);
+            if (found) {
+              const side = st.onPlatter.sides[st.activeSideIndex] || st.onPlatter.sides[0];
+              hint = `Sillon Face ${side?.side || "A"} · Piste ${found.track.number} : « ${found.track.title} » (${formatDurationMs(
+                found.track.duration_ms
+              )}) · Cliquer pour poser le diamant`;
+            }
+          }
+        } else if (act === "volume-fader") {
+          hint = `Fader VOLUME · GAIN (${st.volumePct}%) · Cliquer ou glisser sur la réglette`;
         }
-        if (useV4Store.getState().hoveredHint !== hint) {
-          useV4Store.getState().setHoveredHint(hint);
+        if (st.hoveredHint !== hint) {
+          st.setHoveredHint(hint);
         }
       } else {
         renderer.domElement.style.cursor = "grab";
@@ -1260,14 +1313,28 @@ export const PersistentStageCanvas: React.FC = () => {
 
     const onPointerDown = (e: PointerEvent) => {
       downPos = { x: e.clientX, y: e.clientY };
+      if (!runtimeRef.current.isStudio || e.button !== 0) return;
+      updateNdc(e.clientX, e.clientY);
+      raycaster.setFromCamera(ndc, camera);
+      const hits = raycaster.intersectObjects([faderKnob, faderSlot], false);
+      if (hits.length > 0) {
+        runtimeRef.current.draggingFader = true;
+        controls.enabled = false;
+        applyVolumeFromWorldPoint(hits[0].point);
+      }
     };
 
     const pressButtonAnim = (mesh: THREE.Mesh | undefined, baseY: number) => {
       if (!mesh) return;
-      gsap.fromTo(mesh.position, { y: baseY - 0.022 }, { y: baseY, duration: 0.22, ease: "back.out(2)" });
+      gsap.fromTo(mesh.position, { y: baseY - 0.024 }, { y: baseY, duration: 0.22, ease: "back.out(2)" });
     };
 
     const onPointerUp = (e: PointerEvent) => {
+      if (runtimeRef.current.draggingFader) {
+        runtimeRef.current.draggingFader = false;
+        controls.enabled = true;
+        return;
+      }
       if (!runtimeRef.current.isStudio || e.button !== 0) return;
       if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 6) return;
 
@@ -1275,46 +1342,52 @@ export const PersistentStageCanvas: React.FC = () => {
       raycaster.setFromCamera(ndc, camera);
       const hits = raycaster.intersectObjects(threeRef.current.interactables, false);
       const hit = filterValidHit(hits);
-      if (!hit) return;
 
       const st = useV4Store.getState();
+
+      // Clicking empty background while inspecting a sleeve returns it smoothly into the crate!
+      if (!hit) {
+        if (st.vinylStage === "INSPECT") {
+          vinylFoley.playSleeveSlide(st.soundFx);
+          st.setVinylStage("ROOM");
+        }
+        return;
+      }
+
       const { action, slotIndex } = hit.object.userData;
 
-      if (action === "crate-sleeve" && typeof slotIndex === "number") {
+      if (action === "return-to-crate") {
+        if (st.vinylStage === "INSPECT") {
+          vinylFoley.playSleeveSlide(st.soundFx);
+          st.setVinylStage("ROOM");
+        }
+      } else if (action === "crate-sleeve" && typeof slotIndex === "number") {
         const album = st.crate[slotIndex];
         if (!album) return;
-        if (st.crateIndex !== slotIndex) {
-          vinylFoley.playCrateFlip(st.soundFx);
-          st.setCrateIndex(slotIndex);
-        } else {
-          vinylFoley.playSleeveSlide(st.soundFx);
-          const qs = buildQueryParams(st.filters);
-          apiGet<VinylDetail>(`${API.vinyl(album.album_key)}${qs}`)
-            .then((detail) => {
-              useV4Store.getState().setInspected(detail);
-              useV4Store.getState().setDiscOut(true);
-              useV4Store.getState().setVinylStage("INSPECT");
-            })
-            .catch(() => {});
-        }
-      } else if (action === "crate-prev") {
-        vinylFoley.playCrateFlip(st.soundFx);
-        st.setCrateIndex(Math.max(0, st.crateIndex - 1));
-      } else if (action === "crate-next") {
-        vinylFoley.playCrateFlip(st.soundFx);
-        const maxIdx = Math.max(0, Math.min(st.crate.length, MAX_CRATE_SLEEVES) - 1);
-        st.setCrateIndex(Math.min(maxIdx, st.crateIndex + 1));
+        // Clicking any sleeve in the crate focuses it AND pulls it physically out of the crate!
+        vinylFoley.playSleeveSlide(st.soundFx);
+        st.setCrateIndex(slotIndex);
+        const qs = buildQueryParams(st.filters);
+        apiGet<VinylDetail>(`${API.vinyl(album.album_key)}${qs}`)
+          .then((detail) => {
+            useV4Store.getState().setInspected(detail);
+            useV4Store.getState().setDiscOut(true);
+            useV4Store.getState().setVinylStage("INSPECT");
+          })
+          .catch(() => {});
       } else if (action === "flip-inspect-sleeve") {
         vinylFoley.playSleeveSlide(st.soundFx);
         st.setSleeveFlipped(!st.sleeveFlipped);
       } else if (action === "place-on-platter") {
         const v = st.inspected;
         if (!v) return;
-        vinylFoley.playNeedleDrop(st.soundFx);
+        vinylFoley.playRecordPlace(st.soundFx);
+        window.setTimeout(() => vinylFoley.playNeedleDrop(useV4Store.getState().soundFx), 180);
         st.setOnPlatter(v);
+        st.setActiveSideIndex(0);
         st.setMotorOn(true);
         st.setVinylStage("ROOM");
-        const side = v.sides[st.activeSideIndex] || v.sides[0];
+        const side = v.sides[0];
         const firstTrack = side?.tracks?.[0];
         if (firstTrack) {
           playTrack({
@@ -1325,11 +1398,19 @@ export const PersistentStageCanvas: React.FC = () => {
             track_key: firstTrack.track_key,
             preview_url: firstTrack.preview_url,
             duration_ms: firstTrack.duration_ms,
-            vinyl: { album_key: v.album_key, sideIndex: st.activeSideIndex, trackIndex: 0 },
+            vinyl: { album_key: v.album_key, sideIndex: 0, trackIndex: 0 },
           });
         }
+      } else if (action === "toggle-power") {
+        vinylFoley.playPowerToggle(st.soundFx);
+        if (st.isPlaying) {
+          st.setIsPlaying(false);
+          st.setMotorOn(false);
+        } else {
+          st.setMotorOn(!st.motorOn);
+        }
       } else if (action === "toggle-start") {
-        vinylFoley.playClick(st.soundFx);
+        vinylFoley.playStartStopButton(st.soundFx);
         pressButtonAnim(threeRef.current.startBtn, 0.435);
         if (st.nowPlaying) {
           const next = !st.isPlaying;
@@ -1358,76 +1439,72 @@ export const PersistentStageCanvas: React.FC = () => {
           st.setMotorOn(!st.motorOn);
         }
       } else if (action === "rpm-33") {
-        vinylFoley.playClick(st.soundFx);
+        vinylFoley.playRpmMicroSwitch(st.soundFx);
         pressButtonAnim(threeRef.current.btn33, 0.43);
         st.setRpm(33);
       } else if (action === "rpm-45") {
-        vinylFoley.playClick(st.soundFx);
+        vinylFoley.playRpmMicroSwitch(st.soundFx);
         pressButtonAnim(threeRef.current.btn45, 0.43);
         st.setRpm(45);
       } else if (action === "flip-disc-side") {
         if (st.onPlatter) {
-          vinylFoley.playSleeveSlide(st.soundFx);
+          vinylFoley.playRecordPlace(st.soundFx);
           const count = Math.max(1, st.onPlatter.sides?.length || 2);
-          st.setActiveSideIndex((st.activeSideIndex + 1) % count);
+          const nextSideIdx = (st.activeSideIndex + 1) % count;
+          st.setActiveSideIndex(nextSideIdx);
+          // Automatically start the first track of the new side if the turntable was playing!
+          const nextSide = st.onPlatter.sides[nextSideIdx];
+          const firstTrack = nextSide?.tracks?.[0];
+          if (st.isPlaying && firstTrack) {
+            playTrack({
+              song_name: firstTrack.title,
+              artist_name: st.onPlatter.artist_name,
+              album_name: st.onPlatter.album_name,
+              artwork_url: st.onPlatter.artwork_url,
+              track_key: firstTrack.track_key,
+              preview_url: firstTrack.preview_url,
+              duration_ms: firstTrack.duration_ms,
+              vinyl: { album_key: st.onPlatter.album_key, sideIndex: nextSideIdx, trackIndex: 0 },
+            });
+          }
         }
       } else if (action === "toggle-lid") {
-        vinylFoley.playClick(st.soundFx);
+        vinylFoley.playLidHinge(st.soundFx, !st.lidOpen);
         st.setLidOpen(!st.lidOpen);
       } else if (action === "toggle-lamp") {
-        vinylFoley.playClick(st.soundFx);
+        vinylFoley.playLampSwitch(st.soundFx);
         st.setLampOn(!st.lampOn);
       } else if (action === "toggle-stylus-light") {
-        vinylFoley.playClick(st.soundFx);
+        vinylFoley.playLampSwitch(st.soundFx);
         st.setStylusLightOn(!st.stylusLightOn);
-      } else if (action === "cycle-pitch") {
-        vinylFoley.playClick(st.soundFx);
-        const steps = [-6, -3, 0, 3, 6];
-        const nextIdx = (steps.indexOf(st.pitchPct) + 1) % steps.length;
-        st.setPitchPct(steps[nextIdx]);
       } else if (action === "cycle-crate-sort") {
-        vinylFoley.playClick(st.soundFx);
+        vinylFoley.playRpmMicroSwitch(st.soundFx);
         const nextSort = CRATE_SORTS[(CRATE_SORTS.indexOf(st.crateSort) + 1) % CRATE_SORTS.length];
         st.setCrateSort(nextSort);
       } else if (action === "inspect-platter") {
         if (st.onPlatter) {
           vinylFoley.playSleeveSlide(st.soundFx);
           st.setInspected(st.onPlatter);
-          st.setDiscOut(true);
+          st.setDiscOut(false);
           st.setVinylStage("INSPECT");
         }
       } else if (action === "groove-seek" && st.onPlatter) {
         const localPt = platterSpinGroup.worldToLocal(hit.point.clone());
         const r = Math.hypot(localPt.x, localPt.z);
         if (r >= GROOVE_INNER_R && r <= GROOVE_OUTER_R) {
-          const side = st.onPlatter.sides[st.activeSideIndex] || st.onPlatter.sides[0];
-          const tracks = side?.tracks || [];
-          if (tracks.length > 0) {
-            const frac = Math.min(0.999, Math.max(0, (GROOVE_OUTER_R - r) / (GROOVE_OUTER_R - GROOVE_INNER_R)));
-            const totalSideMs = Math.max(1, tracks.reduce((a, t) => a + (t.duration_ms || 180_000), 0));
-            const targetSideMs = frac * totalSideMs;
-            let acc = 0;
-            let chosenIdx = 0;
-            for (let ti = 0; ti < tracks.length; ti++) {
-              const d = tracks[ti].duration_ms || 180_000;
-              if (targetSideMs <= acc + d || ti === tracks.length - 1) {
-                chosenIdx = ti;
-                break;
-              }
-              acc += d;
-            }
-            const tr = tracks[chosenIdx];
+          const found = findTrackAtRadius(st.onPlatter, st.activeSideIndex, r);
+          if (found) {
             vinylFoley.playNeedleDrop(st.soundFx);
             st.setMotorOn(true);
             playTrack({
-              song_name: tr.title,
+              song_name: found.track.title,
               artist_name: st.onPlatter.artist_name,
               album_name: st.onPlatter.album_name,
               artwork_url: st.onPlatter.artwork_url,
-              track_key: tr.track_key,
-              preview_url: tr.preview_url,
-              duration_ms: tr.duration_ms,
-              vinyl: { album_key: st.onPlatter.album_key, sideIndex: st.activeSideIndex, trackIndex: chosenIdx },
+              track_key: found.track.track_key,
+              preview_url: found.track.preview_url,
+              duration_ms: found.track.duration_ms,
+              vinyl: { album_key: st.onPlatter.album_key, sideIndex: st.activeSideIndex, trackIndex: found.index },
             });
           }
         }
@@ -1465,7 +1542,7 @@ export const PersistentStageCanvas: React.FC = () => {
     const dom = renderer.domElement;
     dom.addEventListener("pointermove", onPointerMove);
     dom.addEventListener("pointerdown", onPointerDown);
-    dom.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointerup", onPointerUp);
     dom.addEventListener("wheel", onWheel, { capture: true, passive: true });
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -1492,6 +1569,9 @@ export const PersistentStageCanvas: React.FC = () => {
     const forwardVec = new THREE.Vector3();
     const rightVec = new THREE.Vector3();
     const moveVec = new THREE.Vector3();
+    const screenNormal = new THREE.Vector3();
+    const camToScreen = new THREE.Vector3();
+    const screenWorldPos = new THREE.Vector3();
 
     const animate = (now: number) => {
       rafId = requestAnimationFrame(animate);
@@ -1560,24 +1640,31 @@ export const PersistentStageCanvas: React.FC = () => {
       tonearmYawGroup.rotation.y = rt.armYaw;
       tonearmPitchGroup.rotation.x = rt.armPitch;
 
-      // 4. Crate sleeves physical flip-through physics
+      // 4. Crate sleeves physical flip-through + EXCLUSIVE PRESENCE:
+      //    If an album is currently on the turntable/easel (`onPlatter`) or pulled out for inspection (`INSPECT`),
+      //    it is physically removed from the wooden crate so it isn't duplicated!
       const focusedIdx = st.crateIndex;
       const totalVisible = Math.min(st.crate.length, MAX_CRATE_SLEEVES);
+      const platterKey = st.onPlatter?.album_key;
+      const inspectedKey = st.vinylStage === "INSPECT" ? st.inspected?.album_key : null;
+
       for (let i = 0; i < MAX_CRATE_SLEEVES; i++) {
         const slot = crateSlots[i];
-        if (i >= totalVisible) {
+        const slotAlbumKey = st.crate[i]?.album_key;
+        if (i >= totalVisible || (slotAlbumKey && (slotAlbumKey === platterKey || slotAlbumKey === inspectedKey))) {
           slot.mesh.visible = false;
           continue;
         }
         slot.mesh.visible = true;
 
-        let targetTilt = -0.11;
+        // Gentle forward tilt (+0.26 rad ≈ 15°) so sleeves never collide with the front wooden wall!
+        let targetTilt = -0.08;
         let targetLift = 0.0;
         if (i < focusedIdx) {
-          targetTilt = 0.52 - Math.min(0.14, (focusedIdx - 1 - i) * 0.015);
+          targetTilt = 0.26 - Math.min(0.08, (focusedIdx - 1 - i) * 0.01);
         } else if (i === focusedIdx) {
-          targetTilt = -0.02;
-          targetLift = 0.24;
+          targetTilt = 0.0;
+          targetLift = 0.22;
         }
         if (rt.hoveredSlot === i && i >= focusedIdx) {
           targetLift += 0.14;
@@ -1587,6 +1674,14 @@ export const PersistentStageCanvas: React.FC = () => {
         const desiredY = SLEEVE_SIZE / 2 + targetLift;
         slot.mesh.position.y += (desiredY - slot.mesh.position.y) * Math.min(1, dt * 12);
       }
+
+      // 5. Opaque Back-Face Culling for the CSS3D YouTube screen:
+      //    Hide the DOM screen whenever the camera looks at the back of the OLED console!
+      oledConsoleGroup.getWorldPosition(screenWorldPos);
+      screenNormal.set(0, 0, 1).applyQuaternion(oledConsoleGroup.quaternion);
+      camToScreen.subVectors(camera.position, screenWorldPos).normalize();
+      const facingCamera = screenNormal.dot(camToScreen) > 0.05;
+      screenDom.style.visibility = facingCamera ? "visible" : "hidden";
 
       renderer.render(scene, camera);
       css3dRenderer.render(css3dScene, camera);
@@ -1598,9 +1693,9 @@ export const PersistentStageCanvas: React.FC = () => {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("pointerup", onPointerUp);
       dom.removeEventListener("pointermove", onPointerMove);
       dom.removeEventListener("pointerdown", onPointerDown);
-      dom.removeEventListener("pointerup", onPointerUp);
       dom.removeEventListener("wheel", onWheel, true);
       vinylFoley.setCrackleLoop(false);
       controls.dispose();
@@ -1618,13 +1713,21 @@ export const PersistentStageCanvas: React.FC = () => {
     }
   }, [activeTab]);
 
-  // 3. Camera Preset Transitions (ROOM / TURNTABLE / CRATE / INSPECT / FREECAM)
+  // 3. Camera Preset Transitions + Physical Pull-Out Animation from the Wooden Crate!
   useEffect(() => {
     const { camera, controls, inspectGroup } = threeRef.current;
     if (!camera || !controls) return;
 
     if (vinylStage === "INSPECT" && inspected) {
-      if (inspectGroup) inspectGroup.visible = true;
+      if (inspectGroup) {
+        inspectGroup.visible = true;
+        // Animate the sleeve physically rising out of the right oak crate toward the center inspection pose!
+        gsap.fromTo(
+          inspectGroup.position,
+          { x: 2.8, y: 1.35, z: 0.45 },
+          { x: 0.3, y: 1.95, z: 2.35, duration: 0.65, ease: "power3.out" }
+        );
+      }
       gsap.to(camera.position, { x: 0.35, y: 2.55, z: 6.1, duration: 0.75, ease: "power3.out" });
       gsap.to(controls.target, { x: 0.35, y: 1.65, z: 1.2, duration: 0.75, ease: "power3.out" });
     } else if (vinylStage === "TURNTABLE") {
@@ -1636,7 +1739,10 @@ export const PersistentStageCanvas: React.FC = () => {
       gsap.to(camera.position, { x: 2.85, y: 3.6, z: 5.5, duration: 0.8, ease: "power3.out" });
       gsap.to(controls.target, { x: 3.1, y: 0.9, z: 0.1, duration: 0.8, ease: "power3.out" });
     } else if (vinylStage === "ROOM") {
-      if (inspectGroup) inspectGroup.visible = false;
+      if (inspectGroup && inspectGroup.visible) {
+        gsap.killTweensOf(inspectGroup.position);
+        inspectGroup.visible = false;
+      }
       gsap.to(camera.position, { x: 0.2, y: 4.85, z: 8.85, duration: 0.85, ease: "power3.out" });
       gsap.to(controls.target, { x: 0.1, y: 0.55, z: -0.2, duration: 0.85, ease: "power3.out" });
     } else if (vinylStage === "FREECAM") {
@@ -1680,6 +1786,10 @@ export const PersistentStageCanvas: React.FC = () => {
         .then((detail) => {
           if (!useV4Store.getState().onPlatter) {
             useV4Store.getState().setOnPlatter(detail);
+            // Move crateIndex to 1 since album 0 is now on the platter!
+            if (useV4Store.getState().crateIndex === 0 && crate.length > 1) {
+              useV4Store.getState().setCrateIndex(1);
+            }
           }
         })
         .catch(() => {});
@@ -1688,7 +1798,7 @@ export const PersistentStageCanvas: React.FC = () => {
     return () => clearTimeout(timer);
   }, [crate]);
 
-  // 5. Sync inspected 3D sleeve + smooth retraction when flipping Recto/Verso!
+  // 5. Sync inspected 3D sleeve + smooth retraction when flipping Recto/Verso
   useEffect(() => {
     const { inspectFrontMat, inspectBackMat, inspectDiscLabelMat } = threeRef.current;
     if (!inspected || !inspectFrontMat || !inspectBackMat) return;
@@ -1734,7 +1844,6 @@ export const PersistentStageCanvas: React.FC = () => {
     );
   }, [inspected, activeSideIndex, rpm]);
 
-  // When flipping the sleeve to read the verso, retract the disc inside the sleeve first, then rotate the whole sleeve group!
   useEffect(() => {
     const { inspectSleeveGroup, inspectDiscMesh } = threeRef.current;
     if (!inspectSleeveGroup || !inspectDiscMesh) return;
@@ -1804,25 +1913,29 @@ export const PersistentStageCanvas: React.FC = () => {
     }
   }, [onPlatter?.album_key, activeSideIndex, rpm]);
 
-  // 7. Sync platter velocity, RPM LEDs & analog surface crackle
+  // 7. Sync platter velocity, RPM LEDs, Volume Fader position & analog surface crackle
   useEffect(() => {
     const spinning = isPlaying || motorOn;
     const baseRpm = rpm === 45 ? 45 : 33.333;
-    const effectiveRpm = baseRpm * (1 + pitchPct * 0.01);
-    const radPerSec = (effectiveRpm * Math.PI * 2) / 60;
+    const radPerSec = (baseRpm * Math.PI * 2) / 60;
     runtimeRef.current.targetVel = spinning ? radPerSec : 0;
 
-    const { led33Mat, led45Mat, pitchKnob } = threeRef.current;
+    const { led33Mat, led45Mat } = threeRef.current;
     if (led33Mat && led45Mat) {
       led33Mat.emissiveIntensity = rpm === 33 ? 1.6 : 0.08;
       led45Mat.emissiveIntensity = rpm === 45 ? 1.6 : 0.08;
     }
-    if (pitchKnob) {
-      gsap.to(pitchKnob.position, { z: 0.85 + (pitchPct / 8) * 0.55, duration: 0.25 });
-    }
 
     vinylFoley.setCrackleLoop(Boolean(isPlaying && crackle && activeTab === "studio"));
-  }, [isPlaying, motorOn, rpm, pitchPct, crackle, activeTab]);
+  }, [isPlaying, motorOn, rpm, crackle, activeTab]);
+
+  useEffect(() => {
+    const { faderKnob } = threeRef.current;
+    if (!faderKnob || runtimeRef.current.draggingFader) return;
+    const ratio = volumePct / 100;
+    const targetZ = FADER_Z_BOT - ratio * (FADER_Z_BOT - FADER_Z_TOP);
+    gsap.to(faderKnob.position, { z: targetZ, duration: 0.18 });
+  }, [volumePct]);
 
   // 8. Sync Brass Desk Lamp & Pop-up Stylus Target Light
   useEffect(() => {
@@ -1875,12 +1988,13 @@ export const PersistentStageCanvas: React.FC = () => {
     >
       <div ref={containerRef} className="w-full h-full" data-testid="persistent-3d-canvas" />
       <div ref={css3dMountRef} className="fixed inset-0 pointer-events-none" />
-      {/* 3D CSS3D DOM Portal target mounted directly onto the Turntable Plinth in 3D space! */}
+      {/* 3D CSS3D DOM Portal target mounted directly onto the Turntable Plinth in 3D space (with backface-visibility: hidden)! */}
       <div className="hidden">
         <div
           ref={plinthScreenDomRef}
           id="turntable-css3d-screen"
           data-testid="turntable-digital-display"
+          style={{ backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden" }}
           className="w-[240px] h-[148px] bg-[#080605] border border-brass/70 rounded-[3px] overflow-hidden shadow-2xl pointer-events-auto select-none"
         />
       </div>

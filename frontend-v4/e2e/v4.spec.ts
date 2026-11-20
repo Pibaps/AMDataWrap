@@ -36,15 +36,13 @@ test.describe("AMDataWrap V4 — Salon d'écoute 3D & Suite Analytique Apple Mus
     await page.getByTestId("finish-silver").click();
     await page.getByTestId("finish-black").click();
 
-    // 3. Verify 3D Sleeve Inspection & Recto/Verso Flip (disc retracts cleanly inside sleeve)
+    // 3. Verify 3D Sleeve Inspection (pulls out of crate in 3D, zero 2D pop-up menu!)
     await expect(page.getByTestId("focused-crate-album")).toBeVisible({ timeout: 10_000 });
     await page.getByTestId("focused-crate-album").click();
-    await expect(page.getByTestId("vinyl-sleeve-card")).toBeVisible();
-    await page.getByText("Verso 3D").click();
-    await page.waitForTimeout(950);
-    await page.screenshot({ path: "test-results/desktop-sleeve-verso-3d.png" });
-    await page.getByTestId("vinyl-sleeve-card").getByText("Salon").click();
-    await page.waitForTimeout(450);
+    await page.waitForTimeout(750);
+    await page.screenshot({ path: "test-results/desktop-sleeve-inspect-3d.png" });
+    await page.getByText("Salon").first().click();
+    await page.waitForTimeout(500);
 
     // 4. Specifically test "Rythmes" (chrono) after data arrives
     await page.getByTestId("nav-chrono").click();
