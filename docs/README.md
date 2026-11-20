@@ -3,11 +3,12 @@
 Ce dossier centralise les analyses de faisabilité, le plan d'évolution V4, les prompts Deep Research et les rapports PDF de référence.
 
 ## 📂 `plans/` — Feuilles de Route
-- **[PLAN_V4_DRAFT.md](plans/PLAN_V4_DRAFT.md)**  
-  Plan draft complet de la **V4 (« HI-FI SANCTUARY 3D »)** :
-  - **Vraie Chaîne Hi-Fi 3D reconstituée** (`frontend-v4/`, port `5176`) : Platine Vinyle audiophile (bras interactif, sillons proportionnels, inertie 33⅓ RPM), Amplificateur vintage à VU-mètres analogiques & tubes incandescents, Bac à Vinyles 3D (retournement Recto/Verso authentique, sortie du disque, Faces A/B), Enceintes vibrantes, Moniteur Studio, éclairage réactif pochette et caméra cinématique GSAP.
-  - **100 % à 0 € :** Imports RGPD/Takeout (Apple Music, Spotify, YouTube Music, Deezer, TIDAL), enrichissement ISRC & pressages vinyles réels (Deezer → MusicBrainz/CAA → iTunes), tracking temps réel multi-OS/Web/Mobile, et lecture complète pluggable (`YouTube IFrame + ytmusicapi` dans le moniteur studio + Extension MV3 `MusicKit.getInstance()`).
-  - **Universel PC & Smartphones :** 4 paliers adaptatifs (**WebGL2** par défaut partout, **WebGPU** en mode boosté PC).
+- **[PLAN_V4_FINAL.md](plans/PLAN_V4_FINAL.md)** *(Référence validée via `/grill-me`)*  
+  Spécification complète de la **V4 (« SONIC ODYSSEY × VINYL STUDIO 3D »)** :
+  - **Enjeu #1 (0 €) :** Connexion multi-plateformes (profils séparés + fusion ISRC/±180s + matrice de capacités), 5 parseurs RGPD/Takeout (Apple Music, Spotify, YouTube Music, Deezer, TIDAL), tracking live PC & Mobile, et lecture complète hybride (`YouTube IFrame + ytmusicapi` universel + Extension MV3 `MusicKit.getInstance()` Apple Music / Spotify / YTM).
+  - **Frontend V4 (`frontend-v4/`, port `5176`) :** ADN visuel V2 corrigé (zéro reset d'animation, Galaxie 3D lisible) + meilleurs modules V3 + **Bac à Vinyles & Tourne-Disque 3D complet** (sans chaîne Hi-Fi, afficheur digital intégré sur la platine, 3 finitions, bras interactif sur sillons, Recto/Verso authentique).
+  - **Universel PC & Smartphones :** WebGL2 par défaut (4 paliers auto), accès LAN via QR Code, WebGPU opt-in PC.
+- **[PLAN_V4_DRAFT.md](plans/PLAN_V4_DRAFT.md)** *(Archive draft initial)*
 
 ## 📂 `feasibility/` — Analyses de Faisabilité
 - **[FEASIBILITY_APPLE_MUSIC_PLAYER.md](feasibility/FEASIBILITY_APPLE_MUSIC_PLAYER.md)**  
