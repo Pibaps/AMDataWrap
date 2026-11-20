@@ -640,6 +640,16 @@ def ingest_zip(zip_path: Path, filename: str | None = None) -> dict[str, Any]:
                 tc["enrichment_source"] = cached.get("source")
                 tc["enriched_at"] = cached.get("updated_at")
 
+        # Preserve live scrobbles (ListenBrainz / Last.fm / SMTC / Receiver) outside ZIP window & reconcile
+        live_rows = conn.execute(
+            """
+            SELECT pe.*, tc.song_name, tc.artist_name, tc.album_name, tc.artwork_url
+            FROM play_events pe
+            JOIN tracks_catalog tc ON tc.track_key = pe.track_key
+            WHERE COALESCE(pe.source_provider, 'apple_rgpd_zip') != 'apple_rgpd_zip'
+            """
+        ).fetchall()
+
         # Replace transient tables
         conn.execute("DELETE FROM play_events")
         conn.execute("DELETE FROM lyric_events")
@@ -668,6 +678,16 @@ def ingest_zip(zip_path: Path, filename: str | None = None) -> dict[str, Any]:
             list(tracks_catalog.values()),
         )
 
+        # Populate canonical_track_key & source metadata for V3 Continuum reconciliation
+        for ev in play_events_raw:
+            tc_meta = tracks_catalog.get(ev["track_key"]) or {}
+            s_gk = tc_meta.get("song_group_key") or ""
+            a_gk = tc_meta.get("artist_group_key") or ""
+            ev["canonical_track_key"] = f"{s_gk}||{a_gk}"
+            ev["source_provider"] = "apple_rgpd_zip"
+            ev["source_priority"] = 100
+            ev["duration_is_estimated"] = 0
+
         conn.executemany(
             """
             INSERT INTO play_events (
@@ -679,7 +699,7 @@ def ingest_zip(zip_path: Path, filename: str | None = None) -> dict[str, Any]:
                 container_type, container_origin_type, playlist_name, feature_name,
                 device_label, device_os, source_type, offline,
                 auto_play, shuffle_play, repeat_play, audio_quality, playback_format,
-                session_id
+                session_id, source_provider, source_priority, canonical_track_key, duration_is_estimated
             ) VALUES (
                 :event_id, :track_key, :started_at_utc, :started_at_local, :started_epoch,
                 :local_date, :local_year, :local_month, :local_month_num, :local_season,
@@ -689,10 +709,21 @@ def ingest_zip(zip_path: Path, filename: str | None = None) -> dict[str, Any]:
                 :container_type, :container_origin_type, :playlist_name, :feature_name,
                 :device_label, :device_os, :source_type, :offline,
                 :auto_play, :shuffle_play, :repeat_play, :audio_quality, :playback_format,
-                :session_id
+                :session_id, :source_provider, :source_priority, :canonical_track_key, :duration_is_estimated
             )
             """,
             play_events_raw,
+        )
+
+        # Backfill tracks_catalog.duration_ms from observed Apple media_duration_ms
+        conn.execute(
+            """
+            UPDATE tracks_catalog
+            SET duration_ms = COALESCE(
+                (SELECT MAX(media_duration_ms) FROM play_events pe WHERE pe.track_key = tracks_catalog.track_key AND pe.media_duration_ms > 0),
+                0
+            )
+            """
         )
 
         if lyric_events_rows:
@@ -728,7 +759,37 @@ def ingest_zip(zip_path: Path, filename: str | None = None) -> dict[str, Any]:
                 favorites_rows,
             )
 
+        # Rebuild SQLite FTS5 indexes (unicode61 accent-insensitive + trigram)
+        from .db import rebuild_fts_indexes
+
+        rebuild_fts_indexes(conn)
+
+        # Reconcile previously synced live scrobbles against the fresh authoritative ZIP
+        if live_rows:
+            from .continuum.reconciler import IncomingScrobble, reconcile_scrobble
+
+            for lr in live_rows:
+                reconcile_scrobble(
+                    conn,
+                    IncomingScrobble(
+                        source_provider=lr["source_provider"],
+                        song_name=lr["song_name"],
+                        artist_name=lr["artist_name"] or "Artiste inconnu",
+                        album_name=lr["album_name"] or "",
+                        started_epoch=int(lr["started_epoch"]),
+                        play_duration_ms=int(lr["play_duration_ms"]) if not lr["duration_is_estimated"] else None,
+                        media_duration_ms=int(lr["media_duration_ms"]) if lr["media_duration_ms"] else None,
+                        source_event_id=lr["source_event_id"],
+                        device_label=lr["device_label"],
+                        device_os=lr["device_os"],
+                        utc_offset_sec=int(lr["utc_offset_sec"] or 3600),
+                        artwork_url=lr["artwork_url"],
+                    ),
+                )
+
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        final_plays = conn.execute("SELECT COUNT(*) FROM play_events").fetchone()[0]
+        final_tracks = conn.execute("SELECT COUNT(*) FROM tracks_catalog").fetchone()[0]
         conn.execute(
             """
             INSERT OR REPLACE INTO import_meta (
@@ -743,10 +804,10 @@ def ingest_zip(zip_path: Path, filename: str | None = None) -> dict[str, Any]:
                 zip_sha,
                 now_iso,
                 total_raw_rows,
-                total_plays,
+                final_plays,
                 len(lyric_events_rows),
                 len(search_events_rows),
-                len(tracks_catalog),
+                final_tracks,
                 pass1_artist_pct,
                 pass1_gy_pct,
                 min_date,
@@ -754,13 +815,23 @@ def ingest_zip(zip_path: Path, filename: str | None = None) -> dict[str, Any]:
             ),
         )
 
+    # Export immutable Parquet snapshot for DuckDB + seed open-graph jobs
+    try:
+        from .analytics.duckdb_engine import export_parquet_snapshot
+        from .jobs.worker import job_worker
+
+        export_parquet_snapshot()
+        job_worker.seed_artist_graph_jobs(limit=120)
+    except Exception:
+        pass
+
     return {
         "zip_filename": zip_name,
         "total_raw_rows": total_raw_rows,
-        "total_play_events": total_plays,
+        "total_play_events": final_plays,
         "total_lyric_events": len(lyric_events_rows),
         "total_search_events": len(search_events_rows),
-        "unique_tracks": len(tracks_catalog),
+        "unique_tracks": final_tracks,
         "pass1_artist_pct": pass1_artist_pct,
         "pass1_genre_year_pct": pass1_gy_pct,
         "min_date": min_date,

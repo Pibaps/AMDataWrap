@@ -1,13 +1,16 @@
 import asyncio
+import json
 import shutil
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import httpx
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Body, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 
 from .analytics.behavior import get_behavior_and_obsessions
 from .analytics.chrono import get_chronobiology
@@ -19,6 +22,7 @@ from .analytics.detail import (
     get_history,
     get_sessions,
 )
+from .analytics.duckdb_engine import ensure_parquet_snapshot, export_parquet_snapshot, get_snapshot_status
 from .analytics.galaxy import get_sonic_galaxy
 from .analytics.overview import (
     get_filter_options,
@@ -29,8 +33,31 @@ from .analytics.overview import (
     get_top_tracks,
 )
 from .analytics.persona import get_persona_and_eras
+from .analytics.v3_science import (
+    build_smart_playlist,
+    format_playlist_export,
+    fts5_search,
+    get_blind_test_quiz,
+    get_camelot_wheel,
+    get_collector_atelier,
+    get_cooccurrence_graph_2d,
+    get_emotional_compass,
+    get_music_iceberg,
+    get_musical_eras_pelt,
+    get_science_metrics,
+    get_world_atlas,
+    upsert_track_audio_dna,
+)
 from .analytics.wrapped import get_wrapped_story
-from .db import ROOT_DIR, db_session, init_db
+from .continuum.providers import (
+    ingest_listenbrainz_submit_payload,
+    push_playlist_to_listenbrainz,
+    save_provider_config,
+    sync_lastfm,
+    sync_listenbrainz,
+)
+from .continuum.smtc_worker import is_smtc_supported, smtc_worker
+from .db import ROOT_DIR, async_db_session, db_session, init_db
 from .enrichment import enrichment_manager
 from .external import (
     fetch_artist_bio_wikipedia,
@@ -39,6 +66,19 @@ from .external import (
 )
 from .filters import FilterParams, get_filter_params
 from .ingestion import ingest_zip
+from .jobs.worker import fetch_artist_setlists, fetch_cover_art_archive, job_worker
+from .nlp.sentiment import analyze_lyrics_sentiment, save_track_lyrics_sentiment
+from .schemas import (
+    AudioDnaIn,
+    ContinuumStatusOut,
+    ErrorResponse,
+    FtsSearchOut,
+    NowPlayingOut,
+    PlaylistBuildIn,
+    ProviderConfigIn,
+    ProviderStatusOut,
+    SyncResultOut,
+)
 
 DEFAULT_ZIP_PATH = ROOT_DIR / "Apple Media Services information.zip"
 
@@ -47,8 +87,9 @@ DEFAULT_ZIP_PATH = ROOT_DIR / "Apple Media Services information.zip"
 async def lifespan(app: FastAPI):
     init_db()
     # Auto-ingest workspace ZIP if database has no data yet
-    with db_session() as conn:
-        row = conn.execute("SELECT total_play_events FROM import_meta WHERE id = 1").fetchone()
+    async with async_db_session() as conn:
+        cur = await conn.execute("SELECT total_play_events FROM import_meta WHERE id = 1")
+        row = await cur.fetchone()
         has_data = bool(row and row["total_play_events"] > 0)
 
     if not has_data and DEFAULT_ZIP_PATH.exists():
@@ -56,14 +97,24 @@ async def lifespan(app: FastAPI):
         has_data = True
 
     if has_data:
+        await asyncio.to_thread(ensure_parquet_snapshot)
+        await asyncio.to_thread(job_worker.seed_artist_graph_jobs, 120)
         enrichment_manager.get_snapshot()
         enrichment_manager.start()
+        job_worker.start()
 
     yield
     await enrichment_manager.stop()
+    await job_worker.stop()
+    await smtc_worker.stop()
 
 
-app = FastAPI(title="AMDataWrap API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="AMDataWrap API",
+    version="3.0.0",
+    description="Backend unifié AMDataWrap (V1 Classique, V2 Spatial 3D, V3 Continuum).",
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -75,17 +126,44 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------------------------
-# Health & Import
+# Standardized Error Handlers (Phase 0: predictable ErrorResponse contracts)
+# ---------------------------------------------------------------------------
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    payload = ErrorResponse(
+        code=f"HTTP_{exc.status_code}",
+        message=str(exc.detail),
+        detail=exc.detail,
+    )
+    return JSONResponse(status_code=exc.status_code, content=payload.model_dump())
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    payload = ErrorResponse(
+        code="VALIDATION_ERROR",
+        message="Paramètres de requête invalides.",
+        detail=exc.errors(),
+    )
+    return JSONResponse(status_code=422, content=payload.model_dump())
+
+
+# ---------------------------------------------------------------------------
+# Health & Import (Async SQLite WAL)
 # ---------------------------------------------------------------------------
 @app.get("/api/health")
-def health():
-    with db_session() as conn:
-        meta = conn.execute("SELECT * FROM import_meta WHERE id = 1").fetchone()
+async def health():
+    async with async_db_session() as conn:
+        cur = await conn.execute("SELECT * FROM import_meta WHERE id = 1")
+        meta = await cur.fetchone()
     return {
         "status": "ok",
+        "version": "3.0.0",
         "has_data": bool(meta and meta["total_play_events"] > 0),
         "meta": dict(meta) if meta else None,
         "enrichment": enrichment_manager.get_snapshot(),
+        "parquet_snapshot": get_snapshot_status(),
+        "jobs": job_worker.get_status(),
     }
 
 
@@ -109,6 +187,7 @@ async def upload_zip(file: UploadFile = File(...)):
 
     enrichment_manager.get_snapshot()
     enrichment_manager.start(force_restart=True)
+    job_worker.start()
     return {"ok": True, "summary": result}
 
 
@@ -138,9 +217,6 @@ async def enrichment_stream():
 
     async def event_generator():
         try:
-            # Immediate initial state
-            import json
-
             yield f"data: {json.dumps(enrichment_manager.get_snapshot(), ensure_ascii=False)}\n\n"
             while True:
                 try:
@@ -163,7 +239,7 @@ async def enrichment_stream():
 
 
 # ---------------------------------------------------------------------------
-# CORS-safe Artwork Proxy (for dominant color extraction & PNG HD export)
+# CORS-safe Artwork & Audio Proxies (extended with Cover Art Archive)
 # ---------------------------------------------------------------------------
 @app.get("/api/artwork-proxy")
 async def artwork_proxy(url: str = Query(...)):
@@ -172,17 +248,20 @@ async def artwork_proxy(url: str = Query(...)):
         or url.startswith("https://cdn-images.dzcdn.net")
         or url.startswith("https://e-cdns-images.dzcdn.net")
         or url.startswith("https://upload.wikimedia.org")
+        or url.startswith("https://coverartarchive.org")
+        or url.startswith("https://archive.org")
+        or url.startswith("https://ia")
     ):
         raise HTTPException(status_code=400, detail="URL d'artwork non autorisée.")
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
             resp = await client.get(url)
             if resp.status_code != 200:
                 raise HTTPException(status_code=404, detail="Artwork introuvable.")
             return Response(
                 content=resp.content,
                 media_type=resp.headers.get("content-type", "image/jpeg"),
-                headers={"Cache-Control": "public, max-age=86400"},
+                headers={"Cache-Control": "public, max-age=86400", "Access-Control-Allow-Origin": "*"},
             )
     except HTTPException:
         raise
@@ -192,7 +271,7 @@ async def artwork_proxy(url: str = Query(...)):
 
 @app.get("/api/audio-proxy")
 async def audio_proxy(url: str = Query(...)):
-    """CORS-safe proxy for 30s iTunes/Deezer previews so Web Audio API AnalyserNode can read FFT frequencies."""
+    """CORS-safe proxy for 30s iTunes/Deezer previews (Web Audio API FFT + Essentia.js WASM)."""
     if not (
         url.startswith("https://audio-ssl.itunes.apple.com")
         or url.startswith("https://cdns-preview-")
@@ -240,6 +319,9 @@ async def external_track_bpm(song: str = Query(...), artist: str = Query("")):
     return await fetch_track_bpm_deezer(song, artist)
 
 
+# ---------------------------------------------------------------------------
+# V1/V2 Core Analytics Endpoints (100% preserved & backward compatible)
+# ---------------------------------------------------------------------------
 @app.get("/api/analytics/galaxy")
 def galaxy_endpoint(
     f: FilterParams = Depends(get_filter_params),
@@ -248,9 +330,6 @@ def galaxy_endpoint(
     return get_sonic_galaxy(f, limit=limit)
 
 
-# ---------------------------------------------------------------------------
-# Analytics Endpoints (all reactive to global FilterParams)
-# ---------------------------------------------------------------------------
 @app.get("/api/filters")
 def filters_endpoint():
     return get_filter_options()
@@ -316,9 +395,6 @@ def wrapped_endpoint(f: FilterParams = Depends(get_filter_params)):
     return get_wrapped_story(f)
 
 
-# ---------------------------------------------------------------------------
-# Drawers (Artist, Album, Day) + Sessions + Virtualized History & CSV Export
-# ---------------------------------------------------------------------------
 @app.get("/api/detail/artist/{artist_key}")
 def artist_detail_endpoint(artist_key: str, f: FilterParams = Depends(get_filter_params)):
     return get_artist_detail(artist_key, f)
@@ -367,3 +443,322 @@ def history_export_endpoint(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="amdatawrap_history.csv"'},
     )
+
+
+# ===========================================================================
+# V3 CONTINUUM ENDPOINTS (Phase 0, 1, 2, 3, 4)
+# ===========================================================================
+
+# --- Phase 0: Instant SQLite FTS5 Search (unicode61 + trigram + lyrics) ---
+@app.get("/api/v3/search", response_model=FtsSearchOut)
+def v3_fts5_search(q: str = Query("", max_length=200), limit: int = Query(25, ge=1, le=100)):
+    return fts5_search(q, limit=limit)
+
+
+# --- Phase 1: Hub Continuum (Sync Providers, Now Playing, SMTC, Local Receiver) ---
+@app.get("/api/v3/continuum/status", response_model=ContinuumStatusOut)
+async def v3_continuum_status():
+    async with async_db_session() as conn:
+        cur = await conn.execute("SELECT * FROM sync_providers_config ORDER BY provider ASC")
+        prov_rows = await cur.fetchall()
+        cur_np = await conn.execute("SELECT * FROM now_playing_state WHERE id = 1")
+        np_row = await cur_np.fetchone()
+        cur_src = await conn.execute(
+            """
+            SELECT COALESCE(source_provider, 'apple_rgpd_zip') AS provider,
+                   COUNT(*) AS plays,
+                   SUM(play_duration_ms) AS total_ms,
+                   SUM(COALESCE(duration_is_estimated, 0)) AS estimated_plays
+            FROM play_events
+            GROUP BY provider
+            ORDER BY plays DESC
+            """
+        )
+        src_rows = await cur_src.fetchall()
+
+    providers = []
+    for r in prov_rows:
+        try:
+            extra = json.loads(r["extra_json"] or "{}")
+        except Exception:
+            extra = {}
+        providers.append(
+            ProviderStatusOut(
+                provider=r["provider"],
+                enabled=bool(r["enabled"]),
+                username=r["username"],
+                has_token=bool(r["token"]),
+                has_api_key=bool(r["api_key"]),
+                last_sync_at=r["last_sync_at"],
+                last_cursor_ts=int(r["last_cursor_ts"] or 0),
+                last_status=r["last_status"] or "idle",
+                last_error=r["last_error"],
+                total_synced=int(r["total_synced"] or 0),
+                extra=extra,
+            )
+        )
+
+    np_out = (
+        NowPlayingOut(
+            active=bool(np_row["is_playing"]),
+            provider=np_row["provider"],
+            song_name=np_row["song_name"],
+            artist_name=np_row["artist_name"],
+            album_name=np_row["album_name"],
+            artwork_url=np_row["artwork_url"],
+            started_at_utc=np_row["started_at_utc"],
+            duration_ms=int(np_row["duration_ms"] or 0),
+            position_ms=int(np_row["position_ms"] or 0),
+            is_playing=bool(np_row["is_playing"]),
+            updated_at=np_row["updated_at"],
+        )
+        if np_row
+        else NowPlayingOut(active=False)
+    )
+
+    breakdown = [
+        {
+            "provider": r["provider"],
+            "plays": int(r["plays"]),
+            "hours": round(int(r["total_ms"] or 0) / 3_600_000.0, 2),
+            "estimated_plays": int(r["estimated_plays"] or 0),
+        }
+        for r in src_rows
+    ]
+    total_plays = sum(b["plays"] for b in breakdown)
+    est_plays = sum(b["estimated_plays"] for b in breakdown)
+
+    return ContinuumStatusOut(
+        providers=providers,
+        now_playing=np_out,
+        source_breakdown=breakdown,
+        estimated_duration_plays=est_plays,
+        total_plays=total_plays,
+        smtc_supported=is_smtc_supported(),
+        smtc_running=smtc_worker.running,
+    )
+
+
+@app.post("/api/v3/continuum/providers/{provider}")
+def v3_configure_provider(provider: str, body: ProviderConfigIn):
+    allowed = {"listenbrainz", "lastfm", "local_smtc", "local_receiver", "discogs", "setlistfm"}
+    if provider not in allowed:
+        raise HTTPException(status_code=400, detail=f"Connecteur inconnu : {provider}")
+    cfg = save_provider_config(
+        provider,
+        enabled=body.enabled,
+        username=body.username,
+        token=body.token,
+        api_key=body.api_key,
+        extra=body.extra,
+    )
+    if provider == "local_smtc" and body.enabled:
+        smtc_worker.start()
+    return {"ok": True, "provider": provider, "enabled": bool(cfg.get("enabled"))}
+
+
+@app.post("/api/v3/continuum/sync/{provider}", response_model=SyncResultOut)
+async def v3_sync_provider(provider: str):
+    if provider == "listenbrainz":
+        return await sync_listenbrainz()
+    if provider == "lastfm":
+        return await sync_lastfm()
+    if provider == "local_smtc":
+        res = smtc_worker.start()
+        return SyncResultOut(
+            provider="local_smtc",
+            ok=res["ok"],
+            error=None if res["ok"] else res.get("detail"),
+            error_code=None if res["ok"] else "SMTC_UNAVAILABLE",
+        )
+    raise HTTPException(status_code=400, detail=f"Synchronisation non prise en charge pour : {provider}")
+
+
+@app.post("/api/v3/continuum/smtc/{action}")
+async def v3_smtc_control(action: str):
+    if action == "start":
+        return smtc_worker.start()
+    if action == "stop":
+        await smtc_worker.stop()
+        return {"ok": True, "running": False}
+    raise HTTPException(status_code=400, detail="Action attendue : start ou stop")
+
+
+# Local Scrobble Receiver — ListenBrainz-compatible endpoints for Pano Scrobbler / AMWin-RP / Multi-Scrobbler
+@app.get("/apis/listenbrainz/1/validate-token")
+def lb_receiver_validate_token():
+    return {"code": 200, "message": "Token valid.", "valid": True, "user_name": "amdatawrap_local"}
+
+
+@app.post("/apis/listenbrainz/1/submit-listens")
+async def lb_receiver_submit_listens(request: Request, body: dict[str, Any] = Body(...)):
+    ua = request.headers.get("user-agent") or "Pano / Local Scrobbler"
+    res = await asyncio.to_thread(ingest_listenbrainz_submit_payload, body, ua[:60])
+    return res
+
+
+# --- Phase 2: Audio DNA (Essentia.js WASM), Local NLP Sentiment, Open Graph Jobs, Parquet/DuckDB ---
+@app.post("/api/v3/audio-dna")
+def v3_save_audio_dna(body: AudioDnaIn):
+    return upsert_track_audio_dna(body.model_dump())
+
+
+@app.post("/api/v3/nlp/sentiment")
+def v3_analyze_sentiment(body: dict[str, Any] = Body(...)):
+    text = str(body.get("text") or "")
+    track_key = body.get("track_key")
+    if track_key:
+        return save_track_lyrics_sentiment(
+            str(track_key),
+            str(body.get("song_name") or ""),
+            str(body.get("artist_name") or ""),
+            text,
+        )
+    return analyze_lyrics_sentiment(text)
+
+
+@app.get("/api/v3/jobs/status")
+def v3_jobs_status():
+    return {"jobs": job_worker.get_status(), "parquet": get_snapshot_status()}
+
+
+@app.post("/api/v3/jobs/seed")
+async def v3_jobs_seed(limit: int = Query(120, ge=10, le=500)):
+    queued = await asyncio.to_thread(job_worker.seed_artist_graph_jobs, limit)
+    job_worker.start()
+    return {"ok": True, "queued": queued, "status": job_worker.get_status()}
+
+
+@app.post("/api/v3/parquet/rebuild")
+async def v3_rebuild_parquet():
+    meta = await asyncio.to_thread(export_parquet_snapshot)
+    return {"ok": True, "snapshot": meta}
+
+
+@app.get("/api/v3/external/setlists/{artist_key}")
+async def v3_artist_setlists(artist_key: str):
+    return await fetch_artist_setlists(artist_key)
+
+
+@app.get("/api/v3/external/cover-art/{release_group_mbid}")
+async def v3_cover_art(release_group_mbid: str):
+    return await fetch_cover_art_archive(release_group_mbid)
+
+
+# --- Phase 3: Musicological Science (PELT Eras, Russell Compass, Camelot, Eddington/Gini/Survival, Atlas, 2D Graph) ---
+@app.get("/api/v3/analytics/eras")
+def v3_eras_pelt(f: FilterParams = Depends(get_filter_params)):
+    return get_musical_eras_pelt(f)
+
+
+@app.get("/api/v3/analytics/compass")
+def v3_emotional_compass(
+    f: FilterParams = Depends(get_filter_params),
+    limit: int = Query(250, ge=20, le=500),
+):
+    return get_emotional_compass(f, limit=limit)
+
+
+@app.get("/api/v3/analytics/camelot")
+def v3_camelot_wheel(f: FilterParams = Depends(get_filter_params)):
+    return get_camelot_wheel(f)
+
+
+@app.post("/api/v3/playlists/generate")
+async def v3_generate_playlist(
+    body: PlaylistBuildIn,
+    f: FilterParams = Depends(get_filter_params),
+):
+    pl = await asyncio.to_thread(
+        build_smart_playlist,
+        f,
+        kind=body.kind,
+        seed_track_key=body.seed_track_key,
+        era_index=body.era_index,
+        limit=body.limit,
+        custom_name=body.name,
+    )
+    lb_result = None
+    if body.push_to_listenbrainz and pl["tracks"]:
+        lb_result = await push_playlist_to_listenbrainz(pl["name"], pl["tracks"])
+    return {**pl, "listenbrainz_push": lb_result}
+
+
+@app.get("/api/v3/playlists/export")
+def v3_export_playlist(
+    f: FilterParams = Depends(get_filter_params),
+    kind: str = Query("harmonic_mix"),
+    fmt: str = Query("jspf"),
+    seed_track_key: str | None = Query(None),
+    era_index: int | None = Query(None),
+    limit: int = Query(20, ge=5, le=60),
+):
+    pl = build_smart_playlist(
+        f,
+        kind=kind,
+        seed_track_key=seed_track_key,
+        era_index=era_index,
+        limit=limit,
+    )
+    content, media_type, filename = format_playlist_export(pl, fmt.lower())
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/v3/analytics/science")
+def v3_science_metrics(f: FilterParams = Depends(get_filter_params)):
+    return get_science_metrics(f)
+
+
+@app.get("/api/v3/analytics/atlas")
+def v3_world_atlas(
+    f: FilterParams = Depends(get_filter_params),
+    limit: int = Query(150, ge=10, le=400),
+):
+    return get_world_atlas(f, limit=limit)
+
+
+@app.get("/api/v3/analytics/graph2d")
+def v3_graph_2d(
+    f: FilterParams = Depends(get_filter_params),
+    limit: int = Query(320, ge=30, le=800),
+):
+    return get_cooccurrence_graph_2d(f, limit=limit)
+
+
+# --- Phase 4: Iceberg, Blind-Test, Collector Atelier, Scrollytelling Wrapped ---
+@app.get("/api/v3/analytics/iceberg")
+def v3_music_iceberg(
+    f: FilterParams = Depends(get_filter_params),
+    limit: int = Query(120, ge=20, le=300),
+):
+    return get_music_iceberg(f, limit=limit)
+
+
+@app.get("/api/v3/games/blind-test")
+def v3_blind_test(
+    f: FilterParams = Depends(get_filter_params),
+    rounds: int = Query(8, ge=3, le=15),
+    seed: int | None = Query(None),
+):
+    return get_blind_test_quiz(f, rounds=rounds, seed=seed)
+
+
+@app.get("/api/v3/collector/atelier")
+def v3_collector_atelier(f: FilterParams = Depends(get_filter_params)):
+    return get_collector_atelier(f)
+
+
+@app.get("/api/v3/wrapped/scrollytelling")
+def v3_wrapped_scrollytelling(f: FilterParams = Depends(get_filter_params)):
+    return {
+        "wrapped": get_wrapped_story(f),
+        "eras": get_musical_eras_pelt(f),
+        "compass": get_emotional_compass(f, limit=60),
+        "science": get_science_metrics(f),
+        "atlas": get_world_atlas(f, limit=80),
+        "iceberg": get_music_iceberg(f, limit=60),
+    }

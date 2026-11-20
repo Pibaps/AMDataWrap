@@ -86,11 +86,23 @@ async def fetch_lyrics_lrclib(song: str, artist: str = "", album: str = "") -> d
                             if txt:
                                 synced_lines.append({"time": ts_part[1:], "text": txt})
                 plain = item.get("plainLyrics") or "\n".join(l["text"] for l in synced_lines)
+                from .nlp.sentiment import analyze_lyrics_sentiment, save_track_lyrics_sentiment
+                from .normalize import make_track_key
+
+                sentiment = analyze_lyrics_sentiment(plain)
+                if plain:
+                    try:
+                        tkey = make_track_key(song, album or song)
+                        save_track_lyrics_sentiment(tkey, song, artist, plain)
+                    except Exception:
+                        pass
+
                 result = {
                     "found": True,
                     "plain_lyrics": plain,
                     "synced_lines": synced_lines[:120],
                     "instrumental": bool(item.get("instrumental")),
+                    "sentiment": sentiment,
                     "source": "lrclib.net",
                 }
     except Exception:

@@ -2,7 +2,8 @@
 
 Application web locale complète d'analyse et de visualisation de vos données d'écoute Apple Music issues de l'export RGPD (`Apple Media Services information.zip`).
 
-Le projet fait tourner **deux interfaces en simultané** sur un même backend **FastAPI + SQLite** :
+Le projet fait tourner **trois interfaces en simultané** sur un même backend **FastAPI + SQLite WAL + DuckDB/Parquet** :
+- **V3 « Continuum » (`frontend-v3/`, port `5175`)** — *Architecture Temps Réel, Science Musicale & 3 Univers Visuels* : **Studio Hi-Fi Field** (Braun × OP-1 Field avec 4 encodeurs fonctionnels), **Atlas Éditorial** (*The Pudding* + Mode Clair natif APCA) et **Observatoire 3D** (Canvas unique persistant `frameloop="demand"`, Topographie Ridgeline 3D, Bac à Vinyles 3D, Constellation InstancedMesh), Hub Temps Réel (**ListenBrainz**, **Windows SMTC**, récepteur local **Pano Scrobbler / Multi-Scrobbler**, Last.fm optionnel), **Ères PELT (`ruptures`)**, **Boussole Russell**, **Roue Camelot + Mix Harmonique** (JSPF/XSPF/M3U8), **Eddington / Gini / Entropie / Survie**, **Atlas Mondial (MapLibre + Deck.gl)**, **Graphe 2D (Sigma.js)**, **Iceberg 8 strates**, **Blind-Test Personnel**, **Atelier Collector HD** et **Wrapped Scrollytelling**.
 - **V2 Spatial 3D (`frontend-v2/`, port `5174`)** — *Sonic Odyssey* : expérience WebGL **Three.js** audio-réactive, **Galaxie Sonore 3D**, platine vinyle avec **analyseur FFT temps réel**, connecteurs gratuits (**LRCLIB**, **Wikipédia**, **Deezer BPM**) et **Wrapped 11 chapitres** avec mode *Ticket Collector*.
 - **V1 Classique (`frontend/`, port `5173`)** — *Obsidian Glass* : interface analytique épurée avec sidebar, mesh gradients adaptatifs et Wrapped 8 slides.
 
@@ -14,11 +15,13 @@ Double-cliquez sur **`start.bat`** (ou lancez **`start.ps1`** en PowerShell) :
 
 | Service | URL | Dossier | Rôle |
 | :--- | :--- | :--- | :--- |
-| **Backend API** | `http://127.0.0.1:8000` | `backend/` | FastAPI + SQLite (WAL) + Enrichissement SSE + Proxies CORS |
-| **V2 Spatial 3D** | `http://localhost:5174` | `frontend-v2/` | Interface principale (Three.js, FFT, Odyssey 3D) |
-| **V1 Classique** | `http://localhost:5173` | `frontend/` | Version V1 conservée intacte en parallèle (lien `V1 ↗` dans V2) |
+| **Backend API** | `http://127.0.0.1:8000` | `backend/` | FastAPI + SQLite (WAL + FTS5 + aiosqlite) + Parquet/DuckDB + Continuum + Proxies |
+| **V3 Continuum** | `http://localhost:5175` | `frontend-v3/` | Interface principale V3 (3 univers APCA, Science, Atlas, Scrollytelling, Hub Live) |
+| **V2 Spatial 3D** | `http://localhost:5174` | `frontend-v2/` | Version V2 conservée intacte en parallèle (lien `V2 ↗` dans V3) |
+| **V1 Classique** | `http://localhost:5173` | `frontend/` | Version V1 conservée intacte en parallèle (lien `V1 ↗` dans V3) |
 
-> **Repo Git** : la V1 pure est sauvegardée sur la branche `v1-classic` (tag `v1.0-classic`), tandis que `main` contient `backend/`, `frontend/` (V1) et `frontend-v2/` (V2). Les données personnelles (`*.zip`, `data/`) et `node_modules/` sont exclues via `.gitignore`.
+> **Repo Git** : la V1 pure est sauvegardée sur la branche `v1-classic` (tag `v1.0-classic`), tandis que `main` contient `backend/`, `frontend/` (V1), `frontend-v2/` (V2) et `frontend-v3/` (V3). Les données personnelles (`*.zip`, `data/`) et `node_modules/` sont exclues via `.gitignore`.
+> **Tests & Qualité** : `pytest` (tests de propriétés **Hypothesis** + fuzzing OpenAPI **Schemathesis**) et `cd frontend-v3 && npm run test:e2e` (**Playwright**).
 
 ---
 

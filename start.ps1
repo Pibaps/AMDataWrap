@@ -1,4 +1,4 @@
-# AMDataWrap launcher — Backend (:8000) + V1 Classique (:5173) + V2 Spatial 3D (:5174)
+# AMDataWrap launcher — Backend (:8000) + V1 Classique (:5173) + V2 Spatial 3D (:5174) + V3 Continuum (:5175)
 $ErrorActionPreference = "SilentlyContinue"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
@@ -17,7 +17,7 @@ if (Test-PortListening 8000) {
 if (Test-PortListening 5173) {
     Write-Host "V1 Classique deja actif sur http://localhost:5173" -ForegroundColor Yellow
 } else {
-    Write-Host "Demarrage de V1 Classique (:5173)..." -ForegroundColor Cyan
+    Write-Host "Demarrage de V1 Classique (:5173)..." -ForegroundColor Green
     Start-Process powershell -WorkingDirectory "$root\frontend" -ArgumentList "-NoExit", "-Command", "npm run dev"
 }
 
@@ -28,7 +28,15 @@ if (Test-PortListening 5174) {
     Start-Process powershell -WorkingDirectory "$root\frontend-v2" -ArgumentList "-NoExit", "-Command", "npm run dev"
 }
 
+if (Test-PortListening 5175) {
+    Write-Host "V3 Continuum deja actif sur http://localhost:5175" -ForegroundColor Yellow
+} else {
+    Write-Host "Demarrage de V3 Continuum (:5175)..." -ForegroundColor Blue
+    Start-Process powershell -WorkingDirectory "$root\frontend-v3" -ArgumentList "-NoExit", "-Command", "npm run dev"
+}
+
 Start-Sleep -Seconds 2
-Start-Process "http://localhost:5174"
+Start-Process "http://localhost:5175"
 Write-Host "V1 Classique  : http://localhost:5173" -ForegroundColor Green
 Write-Host "V2 Spatial 3D : http://localhost:5174" -ForegroundColor Magenta
+Write-Host "V3 Continuum  : http://localhost:5175" -ForegroundColor Cyan

@@ -1,0 +1,85 @@
+@import 'tailwindcss';
+@import './styles/tokens.css';
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    transition: background-color var(--transition-theme), color var(--transition-theme);
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-serif-ed {
+  font-family: var(--font-serif);
+}
+
+.font-mono-tab {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Matte elevated cards — strictly ZERO backdrop-filter over WebGL */
+.surface-card {
+  background-color: var(--bg-surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  transition: border-color var(--transition-fast), background-color var(--transition-theme);
+}
+
+.surface-card-2 {
+  background-color: var(--bg-surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.surface-card:hover {
+  border-color: var(--border-strong);
+}
+
+/* Braun / OP-1 Field machined tactile button */
+.tactile-btn {
+  background-color: var(--bg-surface-2);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  border-radius: var(--radius-card);
+  transition: transform 140ms ease, background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.tactile-btn:hover {
+  background-color: var(--bg-surface-3);
+  border-color: var(--border-strong);
+}
+
+.tactile-btn:active {
+  transform: translateY(1px);
+}
+
+/* Hardware LED indicator for Studio Hi-Fi Field */
+.field-led {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+/* Clean custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-canvas);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
