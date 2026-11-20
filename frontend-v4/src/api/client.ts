@@ -1,24 +1,24 @@
 /**
  * Shared TypeScript contracts & API client for AMDataWrap V4.
+ * All endpoint paths here are verified against backend/app (openapi.json).
  */
 
 export type NavTab =
   | "studio"
   | "overview"
   | "tops"
-  | "galaxy"
-  | "science"
   | "chrono"
   | "persona"
-  | "obsessions"
+  | "behavior"
+  | "science"
   | "atlas"
+  | "galaxy"
   | "search"
   | "wrapped"
   | "hub";
 
-export type TurntableFinish = "obsidian" | "walnut" | "studio";
-export type VinylStage = "CRATE_BROWSE" | "SLEEVE_INSPECT" | "DISC_SLIDE_OUT" | "TURNTABLE_PLAY";
-export type GraphicsTier = 0 | 1 | 2 | 3;
+export type TurntableFinish = "black" | "silver" | "walnut";
+export type VinylStage = "ROOM" | "CRATE" | "INSPECT" | "TURNTABLE" | "FREECAM";
 
 export interface ProfileCapabilities {
   profile_id: number;
@@ -121,7 +121,11 @@ export interface GlobalFilters {
   exclude_incognito: boolean;
 }
 
-export function buildQueryParams(filters: GlobalFilters, extra?: Record<string, string | number | undefined>): string {
+/** Builds the standard backend FilterParams query string (see backend/app/filters.py). */
+export function buildQueryParams(
+  filters: GlobalFilters,
+  extra?: Record<string, string | number | boolean | undefined | null>
+): string {
   const qs = new URLSearchParams();
   if (filters.profile_id != null) qs.set("profile_id", String(filters.profile_id));
   if (filters.source_provider && filters.source_provider !== "all") {
@@ -135,25 +139,69 @@ export function buildQueryParams(filters: GlobalFilters, extra?: Record<string, 
   if (filters.exclude_incognito) qs.set("exclude_incognito", "true");
   if (extra) {
     for (const [k, v] of Object.entries(extra)) {
-      if (v !== undefined && v !== "") qs.set(k, String(v));
+      if (v !== undefined && v !== null && v !== "") qs.set(k, String(v));
     }
   }
   const str = qs.toString();
   return str ? `?${str}` : "";
 }
 
-export function artworkProxyUrl(url: string | null | undefined, mobileTier: boolean): string | null {
+/** Canonical endpoint map — single source of truth for every view. */
+export const API = {
+  health: "/api/health",
+  filters: "/api/filters",
+  overview: "/api/analytics/overview",
+  topArtists: "/api/analytics/tops/artists",
+  topAlbums: "/api/analytics/tops/albums",
+  topTracks: "/api/analytics/tops/tracks",
+  topGenres: "/api/analytics/tops/genres",
+  chrono: "/api/analytics/chronobiology",
+  persona: "/api/analytics/persona",
+  behavior: "/api/analytics/behavior",
+  wrapped: "/api/analytics/wrapped",
+  galaxy: "/api/analytics/galaxy",
+  science: "/api/v3/analytics/science",
+  eras: "/api/v3/analytics/eras",
+  compass: "/api/v3/analytics/compass",
+  camelot: "/api/v3/analytics/camelot",
+  atlas: "/api/v3/analytics/atlas",
+  iceberg: "/api/v3/analytics/iceberg",
+  search: "/api/v3/search",
+  sessions: "/api/sessions",
+  detailArtist: (key: string) => `/api/detail/artist/${encodeURIComponent(key)}`,
+  detailAlbum: (key: string) => `/api/detail/album/${encodeURIComponent(key)}`,
+  detailDay: (date: string) => `/api/detail/day/${encodeURIComponent(date)}`,
+  profiles: "/api/v4/profiles",
+  capabilities: "/api/v4/profile/capabilities",
+  crate: "/api/v4/vinyl/crate",
+  vinyl: (key: string) => `/api/v4/vinyl/${encodeURIComponent(key)}`,
+  vinylEnrich: (key: string) => `/api/v4/vinyl/${encodeURIComponent(key)}/enrich`,
+  resolve: "/api/v4/playback/resolve",
+  scrobble: "/api/v4/playback/scrobble",
+  importGuides: "/api/v4/import/guides",
+  importPreview: "/api/v4/import/preview",
+  importV4: "/api/v4/import",
+  trackingSetup: "/api/v4/tracking/setup",
+} as const;
+
+/**
+ * Proxied artwork URL (CORS-safe for WebGL textures / canvas).
+ * Normalises `http://` URLs (Cover Art Archive returns http links) to https.
+ */
+export function coverUrl(url: string | null | undefined, size = 400): string | null {
   if (!url) return null;
-  const w = mobileTier ? 512 : 1024;
-  const fmt = mobileTier ? "webp" : "jpeg";
-  return `/api/artwork-proxy?url=${encodeURIComponent(url)}&w=${w}&fmt=${fmt}`;
+  let u = url.trim();
+  if (u.startsWith("//")) u = `https:${u}`;
+  if (u.startsWith("http://")) u = `https://${u.slice(7)}`;
+  if (!u.startsWith("https://")) return null;
+  return `/api/artwork-proxy?url=${encodeURIComponent(u)}&w=${size}&fmt=webp`;
 }
 
-export async function apiGet<T = any>(path: string): Promise<T> {
-  const res = await fetch(path);
+export async function apiGet<T = any>(path: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(path, { signal });
   if (!res.ok) {
     const txt = await res.text().catch(() => res.statusText);
-    throw new Error(`API ${res.status}: ${txt}`);
+    throw new Error(`API ${res.status}: ${txt.slice(0, 200)}`);
   }
   return res.json();
 }
@@ -166,7 +214,7 @@ export async function apiPost<T = any>(path: string, body?: unknown): Promise<T>
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => res.statusText);
-    throw new Error(`API ${res.status}: ${txt}`);
+    throw new Error(`API ${res.status}: ${txt.slice(0, 200)}`);
   }
   return res.json();
 }
@@ -180,7 +228,18 @@ export function formatDurationMs(ms: number): string {
 }
 
 export function formatHours(ms: number): string {
-  const h = ms / 3_600_000;
+  const h = (ms || 0) / 3_600_000;
   if (h >= 10) return `${Math.round(h).toLocaleString("fr-FR")} h`;
-  return `${h.toFixed(1)} h`;
+  return `${h.toFixed(1).replace(".", ",")} h`;
+}
+
+export function formatInt(n: number | null | undefined): string {
+  return Math.round(n || 0).toLocaleString("fr-FR");
+}
+
+export function formatDateFr(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso.length <= 10 ? `${iso}T12:00:00` : iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 }

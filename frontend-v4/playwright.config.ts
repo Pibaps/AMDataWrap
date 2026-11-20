@@ -6,8 +6,15 @@ export default defineConfig({
   retries: 0,
   use: {
     baseURL: "http://127.0.0.1:5176",
+    channel: "msedge",
     headless: true,
     screenshot: "only-on-failure",
+  },
+  webServer: {
+    command: "npm run dev",
+    url: "http://127.0.0.1:5176",
+    reuseExistingServer: true,
+    timeout: 30_000,
   },
   projects: [
     {

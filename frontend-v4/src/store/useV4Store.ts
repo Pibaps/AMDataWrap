@@ -1,23 +1,22 @@
 /**
- * Zustand global store for AMDataWrap V4.
- * Holds UI navigation, profiles, capabilities matrix, vinyl stage machine,
- * hybrid playback state (YouTube IFrame / Extension MV3 / Preview Audio),
- * graphics tier (Tier 0-3 including WebGPU opt-in), and turntable finish.
+ * Zustand global store for AMDataWrap V4 ("Salon d'écoute").
+ *
+ * Defaults strictly to `source_provider: "apple_music"` per user preference.
  */
 
 import { create } from "zustand";
 import type {
   GlobalFilters,
-  GraphicsTier,
   NavTab,
   ProfileCapabilities,
   ProfileItem,
   TurntableFinish,
+  VinylCrateAlbum,
   VinylDetail,
   VinylStage,
 } from "../api/client";
 
-export type PlaybackMode = "youtube_iframe" | "extension_bridge" | "preview_audio";
+export type PlaybackSource = "youtube" | "preview";
 
 export interface ActiveTrack {
   song_name: string;
@@ -28,11 +27,8 @@ export interface ActiveTrack {
   video_id?: string | null;
   preview_url?: string | null;
   duration_ms: number;
-  position_ms: number;
-  is_playing: boolean;
-  provider: PlaybackMode | "external_live";
-  bpm?: number | null;
-  camelot?: string | null;
+  source: PlaybackSource | "external";
+  vinyl?: { album_key: string; sideIndex: number; trackIndex: number } | null;
 }
 
 export interface V4State {
@@ -47,56 +43,66 @@ export interface V4State {
   capabilities: ProfileCapabilities | null;
   setProfilesData: (profiles: ProfileItem[], activeId: number | null, caps: ProfileCapabilities | null) => void;
 
-  // Vinyl Studio 3D state machine (CRATE_BROWSE -> SLEEVE_INSPECT -> DISC_SLIDE_OUT -> TURNTABLE_PLAY)
+  // Vinyl studio & interactive 3D room state
   vinylStage: VinylStage;
   setVinylStage: (stage: VinylStage) => void;
-  selectedVinyl: VinylDetail | null;
-  setSelectedVinyl: (v: VinylDetail | null) => void;
+  crateSort: string;
+  setCrateSort: (sort: string) => void;
+  crate: VinylCrateAlbum[];
+  setCrate: (albums: VinylCrateAlbum[]) => void;
+  crateIndex: number;
+  setCrateIndex: (idx: number) => void;
+  inspected: VinylDetail | null;
+  setInspected: (v: VinylDetail | null) => void;
+  onPlatter: VinylDetail | null;
+  setOnPlatter: (v: VinylDetail | null) => void;
   activeSideIndex: number;
   setActiveSideIndex: (idx: number) => void;
   sleeveFlipped: boolean;
   setSleeveFlipped: (flipped: boolean) => void;
-  rpmMode: 33 | 45;
-  setRpmMode: (rpm: 33 | 45) => void;
+  discOut: boolean;
+  setDiscOut: (out: boolean) => void;
+  rpm: 33 | 45;
+  setRpm: (rpm: 33 | 45) => void;
+  pitchPct: number;
+  setPitchPct: (pct: number) => void;
   lidOpen: boolean;
   setLidOpen: (open: boolean) => void;
-  cueLifted: boolean;
-  setCueLifted: (lifted: boolean) => void;
-  soundFxEnabled: boolean;
-  setSoundFxEnabled: (enabled: boolean) => void;
-  turntableFinish: TurntableFinish;
-  setTurntableFinish: (finish: TurntableFinish) => void;
+  lampOn: boolean;
+  setLampOn: (on: boolean) => void;
+  stylusLightOn: boolean;
+  setStylusLightOn: (on: boolean) => void;
+  finish: TurntableFinish;
+  setFinish: (finish: TurntableFinish) => void;
+  soundFx: boolean;
+  setSoundFx: (on: boolean) => void;
+  crackle: boolean;
+  setCrackle: (on: boolean) => void;
+  hoveredHint: string | null;
+  setHoveredHint: (hint: string | null) => void;
+  seekRequestMs: number | null;
+  requestSeekMs: (ms: number | null) => void;
 
-  // Hybrid 0 EUR Playback
-  preferredPlayback: PlaybackMode;
-  setPreferredPlayback: (mode: PlaybackMode) => void;
+  // Playback
+  preferredSource: PlaybackSource;
+  setPreferredSource: (s: PlaybackSource) => void;
+  nowPlaying: ActiveTrack | null;
+  setNowPlaying: (track: ActiveTrack | null) => void;
+  isPlaying: boolean;
+  setIsPlaying: (playing: boolean) => void;
+  motorOn: boolean;
+  setMotorOn: (on: boolean) => void;
+  showVideo: boolean;
+  setShowVideo: (on: boolean) => void;
+  playbackError: string | null;
+  setPlaybackError: (msg: string | null) => void;
+
   extensionConnected: boolean;
   extensionPlatforms: string[];
   setExtensionStatus: (connected: boolean, platforms: string[]) => void;
-  nowPlaying: ActiveTrack | null;
-  setNowPlaying: (track: ActiveTrack | null) => void;
-  updatePlaybackClock: (posMs: number, durMs?: number, isPlaying?: boolean) => void;
-  seekRequestSec: number | null;
-  requestSeek: (sec: number | null) => void;
-
-  // Phase 3 Graphics Tier (0 = CSS/2D, 1 = Mobile WebGL2, 2 = Desktop WebGL2, 3 = PC WebGPU opt-in)
-  graphicsTier: GraphicsTier;
-  webgpuAvailable: boolean;
-  webgpuOptIn: boolean;
-  setGraphicsTier: (tier: GraphicsTier) => void;
-  setWebgpuStatus: (available: boolean, optIn: boolean) => void;
-  drawCallsCount: number;
-  setDrawCallsCount: (count: number) => void;
 }
 
-function detectInitialTier(): GraphicsTier {
-  if (typeof window === "undefined") return 2;
-  const canvas = document.createElement("canvas");
-  const gl2 = canvas.getContext("webgl2");
-  if (!gl2) return 0;
-  const isMobile = window.innerWidth <= 820 || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
-  return isMobile ? 1 : 2;
-}
+const savedFinish = (typeof localStorage !== "undefined" && localStorage.getItem("amdw.finish")) as TurntableFinish | null;
 
 export const useV4Store = create<V4State>((set) => ({
   activeTab: "studio",
@@ -104,7 +110,7 @@ export const useV4Store = create<V4State>((set) => ({
 
   filters: {
     profile_id: null,
-    source_provider: "all",
+    source_provider: "apple_music",
     year: "all",
     skip_mode: "lastfm",
     exclude_incognito: false,
@@ -122,58 +128,66 @@ export const useV4Store = create<V4State>((set) => ({
       filters: { ...s.filters, profile_id: activeProfileId },
     })),
 
-  vinylStage: "CRATE_BROWSE",
+  vinylStage: "ROOM",
   setVinylStage: (vinylStage) => set({ vinylStage }),
-  selectedVinyl: null,
-  setSelectedVinyl: (selectedVinyl) => set({ selectedVinyl, activeSideIndex: 0, sleeveFlipped: false }),
+  crateSort: "top",
+  setCrateSort: (crateSort) => set({ crateSort }),
+  crate: [],
+  setCrate: (crate) => set({ crate }),
+  crateIndex: 0,
+  setCrateIndex: (crateIndex) => set({ crateIndex }),
+  inspected: null,
+  setInspected: (inspected) => set({ inspected, sleeveFlipped: false, discOut: false }),
+  onPlatter: null,
+  setOnPlatter: (onPlatter) => set({ onPlatter }),
   activeSideIndex: 0,
   setActiveSideIndex: (activeSideIndex) => set({ activeSideIndex }),
   sleeveFlipped: false,
   setSleeveFlipped: (sleeveFlipped) => set({ sleeveFlipped }),
-  rpmMode: 33,
-  setRpmMode: (rpmMode) => set({ rpmMode }),
+  discOut: false,
+  setDiscOut: (discOut) => set({ discOut }),
+  rpm: 33,
+  setRpm: (rpm) => set({ rpm }),
+  pitchPct: 0,
+  setPitchPct: (pitchPct) => set({ pitchPct }),
   lidOpen: true,
   setLidOpen: (lidOpen) => set({ lidOpen }),
-  cueLifted: false,
-  setCueLifted: (cueLifted) => set({ cueLifted }),
-  soundFxEnabled: true,
-  setSoundFxEnabled: (soundFxEnabled) => set({ soundFxEnabled }),
-  turntableFinish: "obsidian",
-  setTurntableFinish: (turntableFinish) => set({ turntableFinish }),
+  lampOn: true,
+  setLampOn: (lampOn) => set({ lampOn }),
+  stylusLightOn: true,
+  setStylusLightOn: (stylusLightOn) => set({ stylusLightOn }),
+  finish: savedFinish === "black" || savedFinish === "silver" || savedFinish === "walnut" ? savedFinish : "black",
+  setFinish: (finish) => {
+    try {
+      localStorage.setItem("amdw.finish", finish);
+    } catch {
+      /* ignore */
+    }
+    set({ finish });
+  },
+  soundFx: true,
+  setSoundFx: (soundFx) => set({ soundFx }),
+  crackle: true,
+  setCrackle: (crackle) => set({ crackle }),
+  hoveredHint: null,
+  setHoveredHint: (hoveredHint) => set({ hoveredHint }),
+  seekRequestMs: null,
+  requestSeekMs: (seekRequestMs) => set({ seekRequestMs }),
 
-  preferredPlayback: "youtube_iframe",
-  setPreferredPlayback: (preferredPlayback) => set({ preferredPlayback }),
+  preferredSource: "youtube",
+  setPreferredSource: (preferredSource) => set({ preferredSource }),
+  nowPlaying: null,
+  setNowPlaying: (nowPlaying) => set({ nowPlaying, playbackError: null }),
+  isPlaying: false,
+  setIsPlaying: (isPlaying) => set({ isPlaying }),
+  motorOn: false,
+  setMotorOn: (motorOn) => set({ motorOn }),
+  showVideo: true,
+  setShowVideo: (showVideo) => set({ showVideo }),
+  playbackError: null,
+  setPlaybackError: (playbackError) => set({ playbackError }),
+
   extensionConnected: false,
   extensionPlatforms: [],
-  setExtensionStatus: (extensionConnected, extensionPlatforms) =>
-    set({ extensionConnected, extensionPlatforms }),
-  nowPlaying: null,
-  setNowPlaying: (nowPlaying) => set({ nowPlaying }),
-  updatePlaybackClock: (position_ms, duration_ms, is_playing) =>
-    set((s) => {
-      if (!s.nowPlaying) return s;
-      return {
-        nowPlaying: {
-          ...s.nowPlaying,
-          position_ms,
-          duration_ms: duration_ms !== undefined && duration_ms > 0 ? duration_ms : s.nowPlaying.duration_ms,
-          is_playing: is_playing !== undefined ? is_playing : s.nowPlaying.is_playing,
-        },
-      };
-    }),
-  seekRequestSec: null,
-  requestSeek: (seekRequestSec) => set({ seekRequestSec }),
-
-  graphicsTier: detectInitialTier(),
-  webgpuAvailable: typeof navigator !== "undefined" && "gpu" in navigator,
-  webgpuOptIn: false,
-  setGraphicsTier: (graphicsTier) => set({ graphicsTier }),
-  setWebgpuStatus: (webgpuAvailable, webgpuOptIn) =>
-    set((s) => ({
-      webgpuAvailable,
-      webgpuOptIn,
-      graphicsTier: webgpuOptIn && webgpuAvailable ? 3 : s.graphicsTier === 3 ? 2 : s.graphicsTier,
-    })),
-  drawCallsCount: 0,
-  setDrawCallsCount: (drawCallsCount) => set({ drawCallsCount }),
+  setExtensionStatus: (extensionConnected, extensionPlatforms) => set({ extensionConnected, extensionPlatforms }),
 }));

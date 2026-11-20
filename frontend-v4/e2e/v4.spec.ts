@@ -1,46 +1,82 @@
 import { test, expect } from "@playwright/test";
 
-test.describe("AMDataWrap V4 — Desktop 1440p & Mobile 390x844 Validation", () => {
-  test("Persistent 3D Canvas, Turntable 3 Finishes, Galaxy 3D Legend & Hub LAN QR", async ({ page }) => {
+test.describe("AMDataWrap V4 — Salon d'écoute 3D & Suite Analytique Apple Music", () => {
+  test("3D Listening Room, Embedded Turntable YouTube Display, Chrono Rythmes & All 12 Tabs", async ({
+    page,
+  }) => {
     const errors: string[] = [];
+    const failedApiCalls: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));
+    page.on("response", (res) => {
+      if (res.url().includes("/api/") && res.status() >= 400) {
+        failedApiCalls.push(`${res.status()} ${res.url()}`);
+      }
+    });
 
     await page.goto("/");
     await expect(page.getByText("AMDataWrap")).toBeVisible();
-    await expect(page.getByText("VINYL STUDIO 3D", { exact: true })).toBeVisible();
 
-    // 1. Verify persistent 3D canvas (or Tier 0 fallback in headless without WebGL) is mounted
-    const stageLocator = page.locator('[data-testid="persistent-3d-canvas"], [data-testid="tier0-fallback-stage"]');
-    await expect(stageLocator.first()).toBeVisible();
-    const initialCanvasHandle = await stageLocator.first().elementHandle();
+    // 1. Verify persistent 3D canvas & Turntable-embedded YouTube OLED screen are mounted
+    const canvas = page.getByTestId("persistent-3d-canvas").locator("canvas");
+    await expect(canvas).toBeVisible();
+    await expect(page.getByTestId("turntable-digital-display")).toBeVisible();
+
+    // Verify that pointer events actually reach the 3D WebGL <canvas> in the middle of the screen (not blocked by <main>!)
+    const box = await canvas.boundingBox();
+    expect(box).not.toBeNull();
+    const hitTag = await page.evaluate(
+      ({ x, y }) => document.elementFromPoint(x, y)?.tagName,
+      { x: box!.x + box!.width * 0.5, y: box!.y + box!.height * 0.5 }
+    );
+    expect(hitTag).toBe("CANVAS");
 
     // 2. Verify all 3 turntable finishes switch cleanly in 1 click
     await expect(page.getByTestId("turntable-finish-switcher")).toBeVisible();
     await page.getByTestId("finish-walnut").click();
-    await page.getByTestId("finish-studio").click();
-    await page.getByTestId("finish-obsidian").click();
+    await page.getByTestId("finish-silver").click();
+    await page.getByTestId("finish-black").click();
 
-    // 3. Navigate to Galaxy 3D V4 -> verify HUD legend & canvas visible
-    await page.getByTestId("nav-galaxy").click();
-    await expect(page.getByTestId("galaxy-3d-canvas")).toBeVisible();
-    await expect(page.getByTestId("galaxy-hud-legend")).toBeVisible();
+    // 3. Verify 3D Sleeve Inspection & Recto/Verso Flip (disc retracts cleanly inside sleeve)
+    await expect(page.getByTestId("focused-crate-album")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("focused-crate-album").click();
+    await expect(page.getByTestId("vinyl-sleeve-card")).toBeVisible();
+    await page.getByText("Verso 3D").click();
+    await page.waitForTimeout(950);
+    await page.screenshot({ path: "test-results/desktop-sleeve-verso-3d.png" });
+    await page.getByTestId("vinyl-sleeve-card").getByText("Salon").click();
+    await page.waitForTimeout(450);
 
-    // 4. Navigate to Hub & Import -> verify Capabilities Matrix, LAN QR SVG, and Graphics Tier / WebGPU card
-    await page.getByTestId("nav-hub").click();
-    await expect(page.getByTestId("capabilities-matrix")).toBeVisible();
-    await expect(page.getByTestId("lan-qr-card")).toBeVisible();
-    await expect(page.getByTestId("graphics-tier-card")).toBeVisible();
+    // 4. Specifically test "Rythmes" (chrono) after data arrives
+    await page.getByTestId("nav-chrono").click();
+    await expect(page.getByText("Heure de pointe")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Calendrier d'activité quotidienne")).toBeVisible();
 
-    // 5. Return to Vinyl Studio -> verify the root stage element NEVER unmounted (zero animation reset!)
-    await page.getByTestId("nav-studio").click();
-    const afterCanvasHandle = await stageLocator.first().elementHandle();
-    const isSameNode = await page.evaluate(
-      ([a, b]) => Boolean(a && b && a === b),
-      [initialCanvasHandle, afterCanvasHandle]
-    );
-    expect(isSameNode).toBe(true);
+    // 5. Navigate across all 12 tabs and wait for their content to render with zero runtime or HTTP >= 400 errors
+    const tabs: Array<{ id: string; marker: string }> = [
+      { id: "overview", marker: "Temps cumulé" },
+      { id: "tops", marker: "Classements" },
+      { id: "chrono", marker: "Heure de pointe" },
+      { id: "persona", marker: "Figure dominante" },
+      { id: "behavior", marker: "Écoutes en boucle" },
+      { id: "science", marker: "Nombre d'Eddington" },
+      { id: "atlas", marker: "Atlas mondial des origines" },
+      { id: "galaxy", marker: "Constellation sonore" },
+      { id: "search", marker: "Recherche plein-texte" },
+      { id: "wrapped", marker: "Rétrospective éditoriale" },
+      { id: "hub", marker: "Import & profils" },
+      { id: "studio", marker: "Free Cam" },
+    ];
+    for (const t of tabs) {
+      const btn = page.getByTestId(`nav-${t.id}`);
+      await btn.scrollIntoViewIfNeeded();
+      await btn.click();
+      await expect(page.getByText(t.marker).first()).toBeVisible({ timeout: 10_000 });
+    }
 
-    // Zero uncaught page errors
+    await page.waitForTimeout(380);
+    await page.screenshot({ path: "test-results/desktop-salon-3d.png" });
+
     expect(errors).toEqual([]);
+    expect(failedApiCalls).toEqual([]);
   });
 });

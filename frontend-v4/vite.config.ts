@@ -4,6 +4,16 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ["three", "gsap"],
+          react: ["react", "react-dom", "zustand"],
+        },
+      },
+    },
+  },
   server: {
     host: "0.0.0.0",
     port: 5176,
