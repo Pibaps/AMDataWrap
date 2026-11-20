@@ -10,3 +10,9 @@ ruptures>=1.1.9
 pytest>=8.3.0
 hypothesis>=6.115.0
 schemathesis>=3.38.0
+openpyxl>=3.1.0
+ytmusicapi>=1.9.0
+Pillow>=10.0.0
+segno>=1.6.0
+dbus-next>=0.2.3; sys_platform == "linux"
+

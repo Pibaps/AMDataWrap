@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>AMDataWrap V4 Bridge</title>
+  <style>
+    body { width: 280px; margin: 0; padding: 14px; font-family: system-ui, sans-serif; background: #0c0d14; color: #f4f1ea; }
+    h1 { font-size: 14px; margin: 0 0 8px; letter-spacing: 0.04em; }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+    .ok { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .off { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    ul { list-style: none; padding: 0; margin: 10px 0 0; font-size: 12px; }
+    li { padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,0.06); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+    button { background: rgba(255,255,255,0.12); color: #fff; border: 0; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>AMDataWrap V4 Bridge</h1>
+  <div id="status" class="badge off">Déconnecté</div>
+  <ul id="platforms"></ul>
+  <script src="popup.js"></script>
+</body>
+</html>

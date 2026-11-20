@@ -3,7 +3,16 @@ from datetime import date, timedelta
 from typing import Any
 
 from ..db import db_session
-from ..filters import FilterParams, build_where_clause
+from ..filters import (
+    FilterParams,
+    build_profile_id_clause,
+    build_where_clause,
+    expand_source_providers,
+)
+
+_APPLE_PROVIDERS: frozenset[str] = frozenset(
+    {"apple_rgpd_zip", "apple_music", "musickit_web"}
+)
 
 END_REASON_LABELS = {
     "NATURAL_END_OF_TRACK": "Fin naturelle",
@@ -15,6 +24,16 @@ END_REASON_LABELS = {
     "PLAYBACK_SUSPENDED": "Lecture suspendue",
     "FAILED_TO_LOAD": "Échec chargement",
     "EXITED_APPLICATION": "App fermée",
+    # Spotify Extended end-reason mappings
+    "trackdone": "Fin naturelle",
+    "fwdbtn": "Skip suivant",
+    "backbtn": "Retour arrière",
+    "endplay": "Changement manuel",
+    "logout": "Déconnexion",
+    "remote": "Contrôle distant",
+    "trackerror": "Erreur piste",
+    "unexpected-exit": "App fermée",
+    "unexpected-exit-while-paused": "App fermée (pause)",
 }
 
 
@@ -334,6 +353,21 @@ def _build_date_where(f: FilterParams, alias: str) -> tuple[str, list[Any]]:
         if f.date_to:
             clauses.append(f"{alias}.local_date <= ?")
             params.append(f.date_to)
+
+    # V4: lyric_events & search_events originate exclusively from Apple Music RGPD
+    providers = expand_source_providers(f.source_provider)
+    if providers and not (_APPLE_PROVIDERS & set(providers)):
+        clauses.append("1=0")
+        return " AND ".join(clauses), params
+
+    # V4: profile_id scoping (handles both standard and merged profiles in pure SQL)
+    prof_clause, prof_params = build_profile_id_clause(
+        f.profile_id, alias, include_exclusions=False
+    )
+    if prof_clause:
+        clauses.append(prof_clause)
+        params.extend(prof_params)
+
     return " AND ".join(clauses), params
 
 

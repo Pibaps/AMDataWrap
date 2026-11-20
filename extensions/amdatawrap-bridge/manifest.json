@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "AMDataWrap V4 Bridge",
+  "version": "4.0.0",
+  "description": "Pilote tes vrais comptes Apple Music Web (MusicKit), Spotify Web et YouTube Music à 0 € depuis AMDataWrap V4.",
+  "permissions": [
+    "tabs",
+    "alarms",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://music.apple.com/*",
+    "https://open.spotify.com/*",
+    "https://music.youtube.com/*",
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AMDataWrap V4 Bridge"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://music.apple.com/*"],
+      "js": ["content-apple.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://open.spotify.com/*"],
+      "js": ["content-spotify.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://music.youtube.com/*"],
+      "js": ["content-ytm.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["apple-main-bridge.js"],
+      "matches": ["https://music.apple.com/*"]
+    }
+  ]
+}

@@ -5,67 +5,116 @@ from ..db import db_session
 from ..filters import FilterParams, build_where_clause, metric_order_sql
 
 
-def get_filter_options() -> dict[str, Any]:
+def get_filter_options(profile_id: int | None = None) -> dict[str, Any]:
+    pe_where, pe_params = build_where_clause(
+        FilterParams(profile_id=profile_id),
+        include_skip_filter=False,
+    )
     with db_session() as conn:
         meta = conn.execute("SELECT * FROM import_meta WHERE id = 1").fetchone()
-        years = [r[0] for r in conn.execute("SELECT DISTINCT local_year FROM play_events ORDER BY local_year DESC")]
-        months = [r[0] for r in conn.execute("SELECT DISTINCT local_month FROM play_events ORDER BY local_month DESC")]
+        years = [
+            r[0]
+            for r in conn.execute(
+                f"SELECT DISTINCT pe.local_year FROM play_events pe WHERE {pe_where} ORDER BY pe.local_year DESC",
+                pe_params,
+            )
+        ]
+        months = [
+            r[0]
+            for r in conn.execute(
+                f"SELECT DISTINCT pe.local_month FROM play_events pe WHERE {pe_where} ORDER BY pe.local_month DESC",
+                pe_params,
+            )
+        ]
         seasons = ["Hiver", "Printemps", "Été", "Automne"]
         genres = [
             r[0]
             for r in conn.execute(
-                """
+                f"""
                 SELECT tc.genre, SUM(pe.play_duration_ms) AS ms
                 FROM play_events pe
                 JOIN tracks_catalog tc ON tc.track_key = pe.track_key
-                WHERE tc.genre IS NOT NULL AND tc.genre != ''
+                WHERE tc.genre IS NOT NULL AND tc.genre != '' AND {pe_where}
                 GROUP BY tc.genre
                 ORDER BY ms DESC
                 LIMIT 60
-                """
+                """,
+                pe_params,
             )
         ]
-        decades = [
-            r[0]
-            for r in conn.execute(
-                """
-                SELECT DISTINCT (release_year / 10) * 10 AS dec
-                FROM tracks_catalog
-                WHERE release_year IS NOT NULL AND release_year >= 1940
-                ORDER BY dec DESC
-                """
-            )
-        ]
+        if profile_id is not None:
+            decades = [
+                r[0]
+                for r in conn.execute(
+                    f"""
+                    SELECT DISTINCT (tc.release_year / 10) * 10 AS dec
+                    FROM play_events pe
+                    JOIN tracks_catalog tc ON tc.track_key = pe.track_key
+                    WHERE {pe_where} AND tc.release_year IS NOT NULL AND tc.release_year >= 1940
+                    ORDER BY dec DESC
+                    """,
+                    pe_params,
+                )
+            ]
+        else:
+            decades = [
+                r[0]
+                for r in conn.execute(
+                    """
+                    SELECT DISTINCT (release_year / 10) * 10 AS dec
+                    FROM tracks_catalog
+                    WHERE release_year IS NOT NULL AND release_year >= 1940
+                    ORDER BY dec DESC
+                    """
+                )
+            ]
         artists = [
             {"key": r["artist_group_key"], "name": r["artist_name"]}
             for r in conn.execute(
-                """
+                f"""
                 SELECT tc.artist_group_key, MAX(tc.artist_name) AS artist_name, SUM(pe.play_duration_ms) AS ms
                 FROM play_events pe
                 JOIN tracks_catalog tc ON tc.track_key = pe.track_key
-                WHERE tc.artist_group_key IS NOT NULL AND tc.artist_group_key != ''
+                WHERE tc.artist_group_key IS NOT NULL AND tc.artist_group_key != '' AND {pe_where}
                 GROUP BY tc.artist_group_key
                 ORDER BY ms DESC
                 LIMIT 250
-                """
+                """,
+                pe_params,
             )
         ]
         containers = [
             r[0]
             for r in conn.execute(
-                "SELECT container_type, COUNT(*) AS c FROM play_events WHERE container_type IS NOT NULL GROUP BY container_type ORDER BY c DESC"
+                f"SELECT pe.container_type, COUNT(*) AS c FROM play_events pe WHERE {pe_where} AND pe.container_type IS NOT NULL GROUP BY pe.container_type ORDER BY c DESC",
+                pe_params,
             )
         ]
         features = [
             r[0]
             for r in conn.execute(
-                "SELECT feature_name, COUNT(*) AS c FROM play_events WHERE feature_name IS NOT NULL GROUP BY feature_name ORDER BY c DESC LIMIT 30"
+                f"SELECT pe.feature_name, COUNT(*) AS c FROM play_events pe WHERE {pe_where} AND pe.feature_name IS NOT NULL GROUP BY pe.feature_name ORDER BY c DESC LIMIT 30",
+                pe_params,
             )
         ]
         devices = [
             r[0]
             for r in conn.execute(
-                "SELECT device_label, COUNT(*) AS c FROM play_events WHERE device_label IS NOT NULL GROUP BY device_label ORDER BY c DESC"
+                f"SELECT pe.device_label, COUNT(*) AS c FROM play_events pe WHERE {pe_where} AND pe.device_label IS NOT NULL GROUP BY pe.device_label ORDER BY c DESC",
+                pe_params,
+            )
+        ]
+        providers = [
+            r[0]
+            for r in conn.execute(
+                f"""
+                SELECT COALESCE(pe.source_provider, 'apple_rgpd_zip') AS sp, COUNT(*) AS c
+                FROM play_events pe
+                WHERE {pe_where}
+                GROUP BY sp
+                ORDER BY c DESC
+                """,
+                pe_params,
             )
         ]
 
@@ -80,6 +129,7 @@ def get_filter_options() -> dict[str, Any]:
         "containers": containers,
         "features": features,
         "devices": devices,
+        "providers": providers,
     }
 
 

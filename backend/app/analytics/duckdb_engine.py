@@ -20,6 +20,7 @@ import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from .. import db as db_mod
 from ..db import DATA_DIR, PARQUET_SNAPSHOT_PATH, db_session
 
 _SNAPSHOT_LOCK = threading.Lock()
@@ -67,13 +68,16 @@ PARQUET_SCHEMA = pa.schema(
         ("source_provider", pa.string()),
         ("source_priority", pa.int32()),
         ("duration_is_estimated", pa.int8()),
+        ("profile_id", pa.int64()),
+        ("incognito_mode", pa.int8()),
+        ("isrc", pa.string()),
     ]
 )
 
 
 def export_parquet_snapshot(snapshot_path: Path | None = None) -> dict[str, Any]:
     """Export joined play_events + tracks_catalog to an immutable Parquet file atomically."""
-    target = snapshot_path or PARQUET_SNAPSHOT_PATH
+    target = snapshot_path or db_mod.PARQUET_SNAPSHOT_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
 
     with _SNAPSHOT_LOCK:
@@ -114,7 +118,10 @@ def export_parquet_snapshot(snapshot_path: Path | None = None) -> dict[str, Any]
                     pe.session_id,
                     COALESCE(pe.source_provider, 'apple_rgpd_zip') AS source_provider,
                     COALESCE(pe.source_priority, 100) AS source_priority,
-                    COALESCE(pe.duration_is_estimated, 0) AS duration_is_estimated
+                    COALESCE(pe.duration_is_estimated, 0) AS duration_is_estimated,
+                    COALESCE(pe.profile_id, 1) AS profile_id,
+                    COALESCE(pe.incognito_mode, 0) AS incognito_mode,
+                    COALESCE(pe.isrc, '') AS isrc
                 FROM play_events pe
                 JOIN tracks_catalog tc ON tc.track_key = pe.track_key
                 ORDER BY pe.started_epoch ASC, pe.id ASC
@@ -150,18 +157,29 @@ def export_parquet_snapshot(snapshot_path: Path | None = None) -> dict[str, Any]
 
 
 def ensure_parquet_snapshot() -> Path:
-    if not PARQUET_SNAPSHOT_PATH.exists():
-        export_parquet_snapshot()
-    return PARQUET_SNAPSHOT_PATH
+    target = db_mod.PARQUET_SNAPSHOT_PATH
+    needs_export = not target.exists()
+    if not needs_export:
+        try:
+            existing_cols = set(pq.read_schema(target).names)
+            if not {"profile_id", "incognito_mode", "isrc"}.issubset(existing_cols):
+                needs_export = True
+        except Exception:
+            needs_export = True
+    if needs_export:
+        export_parquet_snapshot(target)
+    return target
 
 
 def get_snapshot_status() -> dict[str, Any]:
-    if PARQUET_SNAPSHOT_PATH.exists():
+    target = db_mod.PARQUET_SNAPSHOT_PATH
+    if target.exists():
         _LAST_EXPORT_META["exists"] = True
-        _LAST_EXPORT_META["size_bytes"] = PARQUET_SNAPSHOT_PATH.stat().st_size
+        _LAST_EXPORT_META["path"] = str(target)
+        _LAST_EXPORT_META["size_bytes"] = target.stat().st_size
         if not _LAST_EXPORT_META.get("rows"):
             try:
-                _LAST_EXPORT_META["rows"] = pq.read_metadata(PARQUET_SNAPSHOT_PATH).num_rows
+                _LAST_EXPORT_META["rows"] = pq.read_metadata(target).num_rows
             except Exception:
                 pass
     return dict(_LAST_EXPORT_META)

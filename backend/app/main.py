@@ -49,6 +49,8 @@ from .analytics.v3_science import (
     upsert_track_audio_dna,
 )
 from .analytics.wrapped import get_wrapped_story
+from .continuum.live_hub import live_hub_router
+from .continuum.os_media import os_media_tracker
 from .continuum.providers import (
     ingest_listenbrainz_submit_payload,
     push_playlist_to_listenbrainz,
@@ -65,9 +67,12 @@ from .external import (
     fetch_track_bpm_deezer,
 )
 from .filters import FilterParams, get_filter_params
+from .importers import importers_router
 from .ingestion import ingest_zip
 from .jobs.worker import fetch_artist_setlists, fetch_cover_art_archive, job_worker
 from .nlp.sentiment import analyze_lyrics_sentiment, save_track_lyrics_sentiment
+from .playback import playback_router
+from .profiles import profiles_router
 from .schemas import (
     AudioDnaIn,
     ContinuumStatusOut,
@@ -79,6 +84,7 @@ from .schemas import (
     ProviderStatusOut,
     SyncResultOut,
 )
+from .vinyl_enrichment import vinyl_router
 
 DEFAULT_ZIP_PATH = ROOT_DIR / "Apple Media Services information.zip"
 
@@ -107,12 +113,13 @@ async def lifespan(app: FastAPI):
     await enrichment_manager.stop()
     await job_worker.stop()
     await smtc_worker.stop()
+    await os_media_tracker.stop()
 
 
 app = FastAPI(
     title="AMDataWrap API",
     version="3.0.0",
-    description="Backend unifié AMDataWrap (V1 Classique, V2 Spatial 3D, V3 Continuum).",
+    description="Backend unifié AMDataWrap (V1 Classique, V2 Spatial 3D, V3 Continuum, V4 Sonic Odyssey × Vinyl Studio 3D).",
     lifespan=lifespan,
 )
 
@@ -123,6 +130,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_v4_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    # Anti-Error 153 for YouTube IFrame API embeds
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
+
+
+# Mount V4 Routers (additive — preserves all V1/V2/V3 endpoints intact)
+app.include_router(profiles_router)
+app.include_router(importers_router)
+app.include_router(vinyl_router)
+app.include_router(live_hub_router)
+app.include_router(playback_router)
 
 
 # ---------------------------------------------------------------------------
@@ -242,7 +265,11 @@ async def enrichment_stream():
 # CORS-safe Artwork & Audio Proxies (extended with Cover Art Archive)
 # ---------------------------------------------------------------------------
 @app.get("/api/artwork-proxy")
-async def artwork_proxy(url: str = Query(...)):
+async def artwork_proxy(
+    url: str = Query(...),
+    w: int | None = Query(None, ge=64, le=2048),
+    fmt: str | None = Query(None, description="webp | jpeg"),
+):
     if not (
         url.startswith("https://is")
         or url.startswith("https://cdn-images.dzcdn.net")
@@ -251,6 +278,9 @@ async def artwork_proxy(url: str = Query(...)):
         or url.startswith("https://coverartarchive.org")
         or url.startswith("https://archive.org")
         or url.startswith("https://ia")
+        or url.startswith("https://i.scdn.co")
+        or url.startswith("https://lh3.googleusercontent.com")
+        or url.startswith("https://i.ytimg.com")
     ):
         raise HTTPException(status_code=400, detail="URL d'artwork non autorisée.")
     try:
@@ -258,9 +288,34 @@ async def artwork_proxy(url: str = Query(...)):
             resp = await client.get(url)
             if resp.status_code != 200:
                 raise HTTPException(status_code=404, detail="Artwork introuvable.")
+            raw_bytes = resp.content
+            media_type = resp.headers.get("content-type", "image/jpeg")
+
+            if w is not None or (fmt and fmt.lower() in ("webp", "jpeg", "jpg")):
+                import io
+                from PIL import Image
+
+                def _transform(data: bytes) -> tuple[bytes, str]:
+                    im = Image.open(io.BytesIO(data))
+                    if im.mode not in ("RGB", "RGBA"):
+                        im = im.convert("RGB")
+                    if w is not None and (im.width > w or im.height > w):
+                        im.thumbnail((w, w), Image.Resampling.LANCZOS)
+                    out = io.BytesIO()
+                    target_fmt = (fmt or "").lower()
+                    if target_fmt == "webp":
+                        im.save(out, format="WEBP", quality=82, method=4)
+                        return out.getvalue(), "image/webp"
+                    if im.mode == "RGBA":
+                        im = im.convert("RGB")
+                    im.save(out, format="JPEG", quality=85, optimize=True)
+                    return out.getvalue(), "image/jpeg"
+
+                raw_bytes, media_type = await asyncio.to_thread(_transform, raw_bytes)
+
             return Response(
-                content=resp.content,
-                media_type=resp.headers.get("content-type", "image/jpeg"),
+                content=raw_bytes,
+                media_type=media_type,
                 headers={"Cache-Control": "public, max-age=86400", "Access-Control-Allow-Origin": "*"},
             )
     except HTTPException:
