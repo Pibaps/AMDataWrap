@@ -76,3 +76,42 @@ def test_schemathesis_get_endpoints_smoke():
             case = op.Case(query={"limit": 30} if path != "/api/v3/search" else {"q": "test", "limit": 10})
             resp = client.request(case.method, case.formatted_path, params=case.query)
             assert resp.status_code < 500
+
+
+def test_v3_frontend_contract_keys():
+    """Verify exact nested response contracts consumed by V3 frontend pages."""
+    with TestClient(app) as client:
+        ov = client.get("/api/analytics/overview").json()
+        assert "plays" in ov["kpis"]
+        assert "daily_avg_ms" in ov["kpis"]
+        assert "avg_completion_pct" in ov["kpis"]
+        assert "skip_rate_30s_pct" in ov["kpis"]
+        assert "total_sessions" in ov["kpis"]
+        assert "longest_streak" in ov["records"] and "days" in ov["records"]["longest_streak"]
+        assert "devices" in ov["breakdowns"]
+        if ov["top_artists"]:
+            assert "artist_group_key" in ov["top_artists"][0]
+            assert "primary_genre" in ov["top_artists"][0]
+        if ov["top_albums"]:
+            assert "album_group_key" in ov["top_albums"][0]
+
+        ch = client.get("/api/analytics/chronobiology").json()
+        assert "matrix" in ch and "heatmap" in ch
+
+        pe = client.get("/api/analytics/persona").json()
+        assert "age" in pe["listening_age"]
+        assert "weighted_median_year" in pe["listening_age"]
+        assert "heart_decade" in pe["listening_age"]
+        assert "title" in pe["persona"] and "radial_scores" in pe["persona"]
+        if pe["persona"]["radial_scores"]:
+            assert "score" in pe["persona"]["radial_scores"][0]
+
+        bh = client.get("/api/analytics/behavior").json()
+        assert "phases" in bh
+        assert "top_looped" in bh["loops"]
+        assert "top_queries" in bh["searches"]
+
+        sc = client.get("/api/v3/wrapped/scrollytelling").json()
+        assert "kpis" in sc["wrapped"] and "plays" in sc["wrapped"]["kpis"]
+        assert "summary_card" in sc["wrapped"] and "top_artists" in sc["wrapped"]["summary_card"]
+

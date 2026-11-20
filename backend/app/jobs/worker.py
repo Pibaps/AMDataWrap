@@ -345,8 +345,10 @@ class PersistentJobWorker:
         return dict(self.stats)
 
     def start(self):
+        curr_loop = asyncio.get_running_loop()
         if self._task and not self._task.done():
-            return
+            if self._task.get_loop() is curr_loop:
+                return
         self._stop = asyncio.Event()
         self.running = True
         self._task = asyncio.create_task(self._loop())
@@ -355,10 +357,12 @@ class PersistentJobWorker:
         self._stop.set()
         if self._task and not self._task.done():
             self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+            if self._task.get_loop() is asyncio.get_running_loop():
+                try:
+                    await self._task
+                except (asyncio.CancelledError, RuntimeError):
+                    pass
+        self._task = None
         self.running = False
 
     async def _rate_wait(self, provider: str):
@@ -518,53 +522,53 @@ class PersistentJobWorker:
 
     async def _loop(self):
         try:
-            async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
-                while not self._stop.is_set():
-                    now = time.time()
-                    with db_session() as conn:
-                        job = conn.execute(
-                            """
-                            SELECT * FROM background_jobs
-                            WHERE status = 'pending' AND next_run_at <= ?
-                            ORDER BY priority DESC, id ASC
-                            LIMIT 1
-                            """,
-                            (now,),
-                        ).fetchone()
-                    if not job:
-                        self.stats["current_job"] = None
-                        await asyncio.sleep(5.0)
-                        continue
+            while not self._stop.is_set():
+                now = time.time()
+                with db_session() as conn:
+                    job = conn.execute(
+                        """
+                        SELECT * FROM background_jobs
+                        WHERE status = 'pending' AND next_run_at <= ?
+                        ORDER BY priority DESC, id ASC
+                        LIMIT 1
+                        """,
+                        (now,),
+                    ).fetchone()
+                if not job:
+                    self.stats["current_job"] = None
+                    await asyncio.sleep(5.0)
+                    continue
 
-                    self.stats["current_job"] = f"{job['job_type']}:{job['target_key']}"
-                    payload = json.loads(job["payload_json"] or "{}")
-                    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                    try:
+                self.stats["current_job"] = f"{job['job_type']}:{job['target_key']}"
+                payload = json.loads(job["payload_json"] or "{}")
+                now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                try:
+                    async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
                         if job["job_type"] == "artist_mb":
                             await self._process_artist_mb(client, payload)
-                        with db_session() as conn:
-                            conn.execute(
-                                "UPDATE background_jobs SET status = 'done', last_error = NULL, updated_at = ? WHERE id = ?",
-                                (now_iso, job["id"]),
-                            )
-                    except Exception as exc:
-                        err = str(exc)
-                        self.stats["last_error"] = err
-                        attempts = int(job["attempts"] or 0) + 1
-                        max_att = int(job["max_attempts"] or 5)
-                        # Exponential backoff with jitter (especially for MusicBrainz HTTP 503)
-                        delay = (2 ** attempts) * (3.0 if "503" in err else 2.0) + random.uniform(0.5, 2.5)
-                        new_status = "failed" if attempts >= max_att else "pending"
-                        with db_session() as conn:
-                            conn.execute(
-                                """
-                                UPDATE background_jobs
-                                SET status = ?, attempts = ?, next_run_at = ?, last_error = ?, updated_at = ?
-                                WHERE id = ?
-                                """,
-                                (new_status, attempts, time.time() + delay, err[:300], now_iso, job["id"]),
-                            )
-                        await asyncio.sleep(1.5)
+                    with db_session() as conn:
+                        conn.execute(
+                            "UPDATE background_jobs SET status = 'done', last_error = NULL, updated_at = ? WHERE id = ?",
+                            (now_iso, job["id"]),
+                        )
+                except Exception as exc:
+                    err = str(exc)
+                    self.stats["last_error"] = err
+                    attempts = int(job["attempts"] or 0) + 1
+                    max_att = int(job["max_attempts"] or 5)
+                    # Exponential backoff with jitter (especially for MusicBrainz HTTP 503)
+                    delay = (2 ** attempts) * (3.0 if "503" in err else 2.0) + random.uniform(0.5, 2.5)
+                    new_status = "failed" if attempts >= max_att else "pending"
+                    with db_session() as conn:
+                        conn.execute(
+                            """
+                            UPDATE background_jobs
+                            SET status = ?, attempts = ?, next_run_at = ?, last_error = ?, updated_at = ?
+                            WHERE id = ?
+                            """,
+                            (new_status, attempts, time.time() + delay, err[:300], now_iso, job["id"]),
+                        )
+                    await asyncio.sleep(1.5)
         except asyncio.CancelledError:
             pass
         finally:

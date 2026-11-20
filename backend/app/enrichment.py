@@ -99,11 +99,13 @@ class EnrichmentManager:
         return dict(self.state)
 
     def start(self, force_restart: bool = False):
+        curr_loop = asyncio.get_running_loop()
         if self._task and not self._task.done():
-            if not force_restart:
-                return
-            self._stop_event.set()
-            self._task.cancel()
+            if self._task.get_loop() is curr_loop:
+                if not force_restart:
+                    return
+                self._stop_event.set()
+                self._task.cancel()
         self._stop_event = asyncio.Event()
         self._task = asyncio.create_task(self._run())
 
@@ -111,10 +113,12 @@ class EnrichmentManager:
         self._stop_event.set()
         if self._task and not self._task.done():
             self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+            if self._task.get_loop() is asyncio.get_running_loop():
+                try:
+                    await self._task
+                except (asyncio.CancelledError, RuntimeError):
+                    pass
+        self._task = None
         self.state["running"] = False
         self.state["phase"] = "stopped"
         self._broadcast()

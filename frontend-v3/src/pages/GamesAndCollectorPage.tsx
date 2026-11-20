@@ -575,7 +575,7 @@ export function GamesAndCollectorPage({ filters }: GamesAndCollectorPageProps) {
                     <div>
                       <div className="mb-1.5 font-mono-tab text-[10px] uppercase text-[#a2a2ad]">TOP ARTISTES</div>
                       {(overview?.top_artists || []).slice(0, 6).map((a: any, i: number) => (
-                        <div key={a.artist_key} className="flex justify-between py-0.5 text-xs">
+                        <div key={a.artist_group_key || i} className="flex justify-between py-0.5 text-xs">
                           <span className="truncate">{i + 1}. {a.artist_name}</span>
                           <span className="font-mono-tab text-[#689cd2]">{(a.total_ms / 3_600_000).toFixed(1)}h</span>
                         </div>

@@ -62,8 +62,8 @@ export function ScrollyWrappedModal({ filters }: ScrollyWrappedModalProps) {
   // Auto-play chapter soundtrack when Sound is toggled ON
   useEffect(() => {
     if (!open || !soundOn || !data) return
-    const topTracks = data.wrapped?.top_tracks || []
-    const pick = topTracks[activeStep % Math.max(topTracks.length, 1)]
+    const topTracks = data.wrapped?.summary_card?.top_tracks || []
+    const pick = topTracks[activeStep % Math.max(topTracks.length, 1)] || data.wrapped?.top_track
     if (pick?.preview_url) {
       void reactiveAudio.play(pick)
     }
@@ -72,13 +72,14 @@ export function ScrollyWrappedModal({ filters }: ScrollyWrappedModalProps) {
   if (!open) return null
 
   const w = data?.wrapped
+  const kpis = w?.kpis
   const eras = data?.eras?.eras || []
   const compass = data?.compass
   const science = data?.science
   const atlas = data?.atlas
   const iceberg = data?.iceberg
 
-  const totalHours = Number(((w?.total_ms || 0) / 3_600_000).toFixed(1))
+  const totalHours = Number((kpis?.total_hours ?? (kpis?.total_ms || 0) / 3_600_000).toFixed(1))
   const parisTokyoFlights = (totalHours / 13.5).toFixed(1)
   const topArtist = w?.top_artist
   const topTrack = w?.top_track
@@ -87,7 +88,7 @@ export function ScrollyWrappedModal({ filters }: ScrollyWrappedModalProps) {
     {
       tag: '01 · OUVERTURE',
       title: `${totalHours} heures d'immersion sonore`,
-      body: `Sur cette période, tu as accumulé ${formatNumber(w?.total_plays)} écoutes validées — l'équivalent de ${parisTokyoFlights} vols Paris → Tokyo en musique continue.`,
+      body: `Sur la période ${w?.period_label || ''}, tu as accumulé ${formatNumber(kpis?.plays)} écoutes validées — l'équivalent de ${parisTokyoFlights} vols Paris → Tokyo en musique continue.`,
     },
     {
       tag: '02 · TES ÈRES MUSICALES (PELT)',
@@ -112,7 +113,7 @@ export function ScrollyWrappedModal({ filters }: ScrollyWrappedModalProps) {
       tag: '05 · TON TITRE HYMNE',
       title: topTrack ? topTrack.song_name : 'Titre #1',
       body: topTrack
-        ? `Signé ${topTrack.artist_name} · ${topTrack.plays} écoutes (${formatHours(topTrack.total_ms)}). Nombre d'Eddington atteint : E = ${science?.eddington?.eddington ?? 0}.`
+        ? `Signé ${topTrack.artist_name} · ${topTrack.plays ?? ''} écoutes (${formatHours(topTrack.total_ms)}). Nombre d'Eddington atteint : E = ${science?.eddington?.eddington ?? 0}.`
         : '',
     },
     {
@@ -176,7 +177,7 @@ export function ScrollyWrappedModal({ filters }: ScrollyWrappedModalProps) {
       }
     }
     // Default / Opening / Top Artists bar morph
-    const topA = (w?.top_artists || []).slice(0, 6)
+    const topA = (w?.summary_card?.top_artists || []).slice(0, 6)
     return {
       grid: { left: 110, right: 24, top: 20, bottom: 28 },
       xAxis: { type: 'value', name: 'Heures' },

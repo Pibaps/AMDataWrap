@@ -30,7 +30,8 @@ export function DetailDrawer({ filters, theme }: DetailDrawerProps) {
     enabled: Boolean(endpoint),
   })
 
-  const artistName = drawer?.type === 'artist' ? data?.artist_name || drawer.label || '' : ''
+  const summary = data?.summary || data
+  const artistName = drawer?.type === 'artist' ? summary?.artist_name || drawer.label || '' : ''
 
   const { data: bio } = useQuery({
     queryKey: ['artist-bio', artistName],
@@ -61,9 +62,9 @@ export function DetailDrawer({ filters, theme }: DetailDrawerProps) {
             </div>
             <h2 className="truncate font-display text-xl font-bold text-[var(--text-strong)]">
               {drawer.type === 'artist'
-                ? data?.artist_name || drawer.label || drawer.key
+                ? summary?.artist_name || drawer.label || drawer.key
                 : drawer.type === 'album'
-                  ? data?.album_name || drawer.label || drawer.key
+                  ? summary?.album_name || drawer.label || drawer.key
                   : drawer.key}
             </h2>
           </div>
@@ -77,25 +78,25 @@ export function DetailDrawer({ filters, theme }: DetailDrawerProps) {
         {data && drawer.type === 'artist' && (
           <div className="space-y-4">
             <div className="flex items-start gap-4">
-              {artworkProxyUrl(data.artwork_url) && (
+              {artworkProxyUrl(summary?.artwork_url) && (
                 <img
-                  src={artworkProxyUrl(data.artwork_url)!}
-                  alt={data.artist_name}
+                  src={artworkProxyUrl(summary?.artwork_url)!}
+                  alt={summary?.artist_name}
                   className="h-20 w-20 rounded-lg object-cover"
                 />
               )}
               <div className="grid flex-1 grid-cols-3 gap-2">
                 <div className="surface-card-2 p-2.5">
                   <div className="text-[10px] text-[var(--text-muted)]">TEMPS</div>
-                  <div className="font-mono-tab text-sm font-bold text-[var(--text-strong)]">{formatHours(data.total_ms)}</div>
+                  <div className="font-mono-tab text-sm font-bold text-[var(--text-strong)]">{formatHours(summary?.total_ms)}</div>
                 </div>
                 <div className="surface-card-2 p-2.5">
                   <div className="text-[10px] text-[var(--text-muted)]">ÉCOUTES</div>
-                  <div className="font-mono-tab text-sm font-bold text-[var(--text-strong)]">{data.plays}</div>
+                  <div className="font-mono-tab text-sm font-bold text-[var(--text-strong)]">{summary?.plays ?? 0}</div>
                 </div>
                 <div className="surface-card-2 p-2.5">
                   <div className="text-[10px] text-[var(--text-muted)]">TITRES</div>
-                  <div className="font-mono-tab text-sm font-bold text-[var(--text-strong)]">{data.unique_tracks}</div>
+                  <div className="font-mono-tab text-sm font-bold text-[var(--text-strong)]">{summary?.unique_tracks ?? 0}</div>
                 </div>
               </div>
             </div>
@@ -177,9 +178,9 @@ export function DetailDrawer({ filters, theme }: DetailDrawerProps) {
                               reactiveAudio.play({
                                 track_key: t.track_key,
                                 song_name: t.song_name,
-                                artist_name: data.artist_name,
+                                artist_name: summary?.artist_name,
                                 album_name: t.album_name,
-                                artwork_url: t.artwork_url || data.artwork_url,
+                                artwork_url: t.artwork_url || summary?.artwork_url,
                                 preview_url: t.preview_url,
                               })
                             }
@@ -204,9 +205,9 @@ export function DetailDrawer({ filters, theme }: DetailDrawerProps) {
                 <Music2 className="h-6 w-6 text-[var(--accent)]" />
               </div>
               <div>
-                <div className="text-sm font-semibold text-[var(--text-strong)]">{data.artist_name}</div>
+                <div className="text-sm font-semibold text-[var(--text-strong)]">{summary?.artist_name}</div>
                 <div className="font-mono-tab text-xs text-[var(--text-secondary)]">
-                  {formatHours(data.total_ms)} · {data.plays} écoutes
+                  {formatHours(summary?.total_ms)} · {summary?.plays ?? 0} écoutes
                 </div>
               </div>
             </div>
@@ -225,7 +226,7 @@ export function DetailDrawer({ filters, theme }: DetailDrawerProps) {
           <div className="space-y-3">
             <div className="flex items-center gap-2 font-mono-tab text-xs text-[var(--text-secondary)]">
               <Calendar className="h-4 w-4 text-[var(--accent)]" />
-              <span>{data.total_plays} écoutes · {formatHours(data.total_ms)}</span>
+              <span>{data.plays ?? 0} écoutes · {formatHours(data.total_ms)}</span>
             </div>
             <div className="space-y-1">
               {(data.events || []).map((ev: any, idx: number) => (

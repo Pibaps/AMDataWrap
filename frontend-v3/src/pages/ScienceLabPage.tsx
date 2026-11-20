@@ -140,7 +140,7 @@ export function ScienceLabPage({ filters, theme }: ScienceLabPageProps) {
         {
           type: 'scatter',
           universalTransition: { enabled: true },
-          symbolSize: (val: any, params: any) => Math.max(7, Math.min(26, 6 + Math.sqrt(params.data.meta.plays) * 2.4)),
+          symbolSize: (_val: any, params: any) => Math.max(7, Math.min(26, 6 + Math.sqrt(params.data.meta.plays) * 2.4)),
           data: pts.map((pt: any) => ({
             value: [pt.valence, pt.arousal],
             meta: pt,

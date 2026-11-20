@@ -62,10 +62,12 @@ class WindowsSMTCWorker:
         self._stop.set()
         if self._task and not self._task.done():
             self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+            if self._task.get_loop() is asyncio.get_running_loop():
+                try:
+                    await self._task
+                except (asyncio.CancelledError, RuntimeError):
+                    pass
+        self._task = None
         self.running = False
 
     async def _poll_once(self) -> dict[str, Any] | None:

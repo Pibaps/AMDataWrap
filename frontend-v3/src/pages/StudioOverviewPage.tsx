@@ -29,6 +29,8 @@ export function StudioOverviewPage({ filters, edition, theme }: StudioOverviewPa
   })
 
   const kpis = data?.kpis
+  const records = data?.records
+  const devices = data?.breakdowns?.devices || []
   const totalHours = ((kpis?.total_ms || 0) / 3_600_000).toFixed(1)
   const tapeDigits = String(Math.floor((kpis?.total_ms || 0) / 60_000)).padStart(6, '0')
   const apcaScore = Math.abs(calcApcaLc(theme === 'dark' ? '#e0e0e0' : '#1c1c20', theme === 'dark' ? '#121214' : '#f3f0e8'))
@@ -77,7 +79,7 @@ export function StudioOverviewPage({ filters, edition, theme }: StudioOverviewPa
             {edition === 'editorial' ? (
               <h1 className="font-serif-ed text-4xl leading-tight text-[var(--text-strong)] sm:text-5xl">
                 <span className="italic text-[var(--accent)]">{totalHours} heures</span> de musique,{' '}
-                {formatNumber(kpis?.total_plays)} écoutes validées.
+                {formatNumber(kpis?.plays)} écoutes validées.
               </h1>
             ) : (
               <div className="flex flex-wrap items-baseline gap-4">
@@ -94,7 +96,7 @@ export function StudioOverviewPage({ filters, edition, theme }: StudioOverviewPa
 
             <p className="mt-2 max-w-2xl text-xs leading-relaxed text-[var(--text-secondary)]">
               {kpis?.min_date && kpis?.max_date
-                ? `Fenêtre active du ${kpis.min_date} au ${kpis.max_date} · ${formatNumber(kpis.unique_artists)} artistes uniques · ${formatNumber(kpis.unique_tracks)} titres · ${formatNumber(kpis.sessions_count)} sessions reconstituées.`
+                ? `Fenêtre active du ${kpis.min_date} au ${kpis.max_date} · ${formatNumber(kpis.unique_artists)} artistes uniques · ${formatNumber(kpis.unique_tracks)} titres · ${formatNumber(kpis.total_sessions)} sessions reconstituées.`
                 : 'Chargez votre archive Apple Music ou connectez ListenBrainz dans le Hub Continuum.'}
             </p>
           </div>
@@ -122,7 +124,7 @@ export function StudioOverviewPage({ filters, edition, theme }: StudioOverviewPa
             <div className="surface-card-2 p-2.5">
               <div className="font-mono-tab text-[10px] text-[var(--text-muted)]">STREAK MAX</div>
               <div className="font-mono-tab text-lg font-bold text-[var(--text-strong)]">
-                {kpis?.longest_streak_days ?? 0} j
+                {records?.longest_streak?.days ?? 0} j
               </div>
             </div>
           </div>
@@ -157,7 +159,13 @@ export function StudioOverviewPage({ filters, edition, theme }: StudioOverviewPa
                     {data.top_tracks[0].song_name}
                   </div>
                   <button
-                    onClick={() => openDrawer({ type: 'artist', key: data.top_tracks[0].artist_key, label: data.top_tracks[0].artist_name })}
+                    onClick={() =>
+                      openDrawer({
+                        type: 'artist',
+                        key: data.top_tracks[0].artist_group_key,
+                        label: data.top_tracks[0].artist_name,
+                      })
+                    }
                     className="truncate text-xs text-[var(--accent)] hover:underline"
                   >
                     {data.top_tracks[0].artist_name}
@@ -177,13 +185,13 @@ export function StudioOverviewPage({ filters, edition, theme }: StudioOverviewPa
                 ) : (
                   <span className="font-mono-tab text-[11px] text-[var(--text-muted)]">Extrait 30s après Passe 2</span>
                 )}
-                {kpis?.record_day && (
+                {records?.record_day?.date && (
                   <button
-                    onClick={() => openDrawer({ type: 'day', key: kpis.record_day.date })}
+                    onClick={() => openDrawer({ type: 'day', key: records.record_day.date })}
                     className="tactile-btn flex items-center gap-1 px-2.5 py-1.5 font-mono-tab text-[11px]"
                   >
                     <Calendar className="h-3 w-3 text-[var(--accent)]" />
-                    Record : {kpis.record_day.date}
+                    Record : {records.record_day.date}
                   </button>
                 )}
               </div>
@@ -201,7 +209,7 @@ export function StudioOverviewPage({ filters, edition, theme }: StudioOverviewPa
             <Headphones className="h-3.5 w-3.5 text-[var(--enc-blue)]" /> Moyenne / jour actif
           </div>
           <div className="mt-1 font-mono-tab text-xl font-bold text-[var(--text-strong)]">
-            {kpis ? `${Math.round((kpis.avg_daily_ms || 0) / 60_000)} min` : '—'}
+            {kpis ? `${Math.round((kpis.daily_avg_ms || 0) / 60_000)} min` : '—'}
           </div>
         </div>
         <div className="surface-card p-3.5">
@@ -209,7 +217,7 @@ export function StudioOverviewPage({ filters, edition, theme }: StudioOverviewPa
             <TrendingUp className="h-3.5 w-3.5 text-[var(--accent-ok)]" /> Complétion moyenne
           </div>
           <div className="mt-1 font-mono-tab text-xl font-bold text-[var(--text-strong)]">
-            {kpis ? `${Math.round((kpis.avg_completion || 0) * 100)} %` : '—'}
+            {kpis ? `${(kpis.avg_completion_pct || 0).toFixed(1)} %` : '—'}
           </div>
         </div>
         <div className="surface-card p-3.5">
@@ -217,15 +225,15 @@ export function StudioOverviewPage({ filters, edition, theme }: StudioOverviewPa
             <Flame className="h-3.5 w-3.5 text-[var(--enc-orange)]" /> Taux de skip &lt;30s
           </div>
           <div className="mt-1 font-mono-tab text-xl font-bold text-[var(--text-strong)]">
-            {kpis ? `${(kpis.skip_rate_pct || 0).toFixed(1)} %` : '—'}
+            {kpis ? `${(kpis.skip_rate_30s_pct || 0).toFixed(1)} %` : '—'}
           </div>
         </div>
         <div className="surface-card p-3.5">
           <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]">
-            <Sparkles className="h-3.5 w-3.5 text-[var(--enc-ochre)]" /> Paroles / Recherches
+            <Sparkles className="h-3.5 w-3.5 text-[var(--enc-ochre)]" /> Sessions / Hors-ligne
           </div>
           <div className="mt-1 font-mono-tab text-xl font-bold text-[var(--text-strong)]">
-            {formatNumber(kpis?.lyric_displays)} / {formatNumber(kpis?.searches_count)}
+            {formatNumber(kpis?.total_sessions)} / {formatNumber(kpis?.offline_plays)}
           </div>
         </div>
       </div>
@@ -240,15 +248,15 @@ export function StudioOverviewPage({ filters, edition, theme }: StudioOverviewPa
           <div className="space-y-2">
             {(data?.top_artists || []).slice(0, 5).map((a: any, i: number) => (
               <button
-                key={a.artist_key}
-                onClick={() => openDrawer({ type: 'artist', key: a.artist_key, label: a.artist_name })}
+                key={a.artist_group_key}
+                onClick={() => openDrawer({ type: 'artist', key: a.artist_group_key, label: a.artist_name })}
                 className="flex w-full items-center justify-between gap-2 rounded-lg p-2 text-left hover:bg-[var(--bg-surface-2)]"
               >
                 <div className="flex min-w-0 items-center gap-2.5">
                   <span className="w-5 font-mono-tab text-xs text-[var(--text-muted)]">0{i + 1}</span>
                   <div className="min-w-0">
                     <div className="truncate text-xs font-semibold text-[var(--text-strong)]">{a.artist_name}</div>
-                    <div className="truncate text-[11px] text-[var(--text-secondary)]">{a.genre || '—'}</div>
+                    <div className="truncate text-[11px] text-[var(--text-secondary)]">{a.primary_genre || '—'}</div>
                   </div>
                 </div>
                 <span className="shrink-0 font-mono-tab text-xs text-[var(--text-primary)]">
@@ -310,8 +318,8 @@ export function StudioOverviewPage({ filters, edition, theme }: StudioOverviewPa
           <div className="space-y-1.5">
             {(data?.top_albums || []).slice(0, 5).map((al: any, i: number) => (
               <button
-                key={al.album_key}
-                onClick={() => openDrawer({ type: 'album', key: al.album_key, label: al.album_name })}
+                key={al.album_group_key}
+                onClick={() => openDrawer({ type: 'album', key: al.album_group_key, label: al.album_name })}
                 className="flex w-full items-center justify-between gap-2 rounded-lg p-2 text-left hover:bg-[var(--bg-surface-2)]"
               >
                 <div className="min-w-0">
@@ -333,12 +341,12 @@ export function StudioOverviewPage({ filters, edition, theme }: StudioOverviewPa
             Appareils détectés
           </h2>
           <div className="space-y-2.5">
-            {(data?.devices || []).slice(0, 6).map((d: any) => {
+            {devices.slice(0, 6).map((d: any) => {
               const pct = Math.min(100, Math.round(((d.total_ms || 0) / Math.max(kpis?.total_ms || 1, 1)) * 100))
               return (
-                <div key={d.device}>
+                <div key={d.label}>
                   <div className="mb-1 flex justify-between text-xs">
-                    <span className="font-medium text-[var(--text-strong)]">{d.device}</span>
+                    <span className="font-medium text-[var(--text-strong)]">{d.label}</span>
                     <span className="font-mono-tab text-[var(--text-secondary)]">
                       {formatHours(d.total_ms)} ({pct}%)
                     </span>

@@ -77,7 +77,7 @@ export function AnalyticsCorePage({ filters, theme }: AnalyticsCorePageProps) {
   const heatmap7x24Option = useMemo(() => {
     const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
     const hours = Array.from({ length: 24 }, (_, i) => `${i}h`)
-    const cells = (chronoData?.hour_dow_matrix || []).map((c: any) => [c.hour, c.dow, Math.round((c.total_ms || 0) / 60_000)])
+    const cells = (chronoData?.matrix || []).map((c: any) => [c.hour, c.dow, Math.round((c.total_ms || 0) / 60_000)])
     const maxV = Math.max(10, ...cells.map((c: any) => c[2]))
     return {
       tooltip: {
@@ -97,17 +97,25 @@ export function AnalyticsCorePage({ filters, theme }: AnalyticsCorePageProps) {
   }, [chronoData, theme])
 
   const radarOption = useMemo(() => {
-    const scores = personaData?.radar || []
+    const scores = personaData?.persona?.radial_scores || []
     return {
       radar: {
-        indicator: scores.map((s: any) => ({ name: s.axis, max: 100 })),
+        indicator:
+          scores.length > 0
+            ? scores.map((s: any) => ({ name: s.axis, max: 100 }))
+            : [{ name: 'Fidélité', max: 100 }, { name: 'Diversité', max: 100 }, { name: 'Endurance', max: 100 }],
         splitArea: { areaStyle: { color: ['transparent'] } },
         axisName: { color: theme === 'dark' ? '#a2a2ad' : '#52525c', fontSize: 11 },
       },
       series: [
         {
           type: 'radar',
-          data: [{ value: scores.map((s: any) => s.value), name: personaData?.archetype?.name || 'Profil' }],
+          data: [
+            {
+              value: scores.map((s: any) => s.score),
+              name: personaData?.persona?.title || 'Profil',
+            },
+          ],
           areaStyle: { color: 'rgba(104, 156, 210, 0.28)' },
           lineStyle: { color: '#689cd2', width: 2 },
           itemStyle: { color: '#689cd2' },
@@ -161,24 +169,29 @@ export function AnalyticsCorePage({ filters, theme }: AnalyticsCorePageProps) {
       {/* TOPS */}
       {sub === 'tops' && (
         <div className="surface-card overflow-hidden">
-          <div className="max-h-[560px] overflow-y-auto divide-y divide-[var(--border-subtle)]">
+          <div className="max-h-[560px] divide-y divide-[var(--border-subtle)] overflow-y-auto">
             {(topsData?.items || []).map((item: any, idx: number) => (
-              <div key={item.artist_key || item.album_key || item.track_key || idx} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-[var(--bg-surface-2)]">
+              <div
+                key={item.artist_group_key || item.album_group_key || item.track_key || idx}
+                className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-[var(--bg-surface-2)]"
+              >
                 <div className="flex min-w-0 items-center gap-3">
                   <span className="w-7 font-mono-tab text-xs text-[var(--text-muted)]">#{idx + 1}</span>
                   <div className="min-w-0">
                     <button
                       onClick={() => {
-                        if (topKind === 'artists') openDrawer({ type: 'artist', key: item.artist_key, label: item.artist_name })
-                        else if (topKind === 'albums') openDrawer({ type: 'album', key: item.album_key, label: item.album_name })
-                        else if (item.artist_key) openDrawer({ type: 'artist', key: item.artist_key, label: item.artist_name })
+                        if (topKind === 'artists') openDrawer({ type: 'artist', key: item.artist_group_key, label: item.artist_name })
+                        else if (topKind === 'albums') openDrawer({ type: 'album', key: item.album_group_key, label: item.album_name })
+                        else if (item.artist_group_key) openDrawer({ type: 'artist', key: item.artist_group_key, label: item.artist_name })
                       }}
                       className="block truncate text-left text-xs font-semibold text-[var(--text-strong)] hover:text-[var(--accent)]"
                     >
                       {item.song_name || item.album_name || item.artist_name}
                     </button>
                     <div className="truncate text-[11px] text-[var(--text-secondary)]">
-                      {topKind === 'artists' ? item.genre || '—' : `${item.artist_name}${item.album_name && topKind === 'tracks' ? ` · ${item.album_name}` : ''}`}
+                      {topKind === 'artists'
+                        ? item.primary_genre || '—'
+                        : `${item.artist_name}${item.album_name && topKind === 'tracks' ? ` · ${item.album_name}` : ''}`}
                     </div>
                   </div>
                 </div>
@@ -208,10 +221,10 @@ export function AnalyticsCorePage({ filters, theme }: AnalyticsCorePageProps) {
           </div>
           <div className="surface-card p-4">
             <h2 className="mb-3 font-mono-tab text-xs font-semibold uppercase text-[var(--text-secondary)]">
-              Calendrier des Jours Actifs (cliquable)
+              Calendrier des Jours Actifs (cliquable · {chronoData?.heatmap?.length ?? 0} j)
             </h2>
             <div className="flex max-h-[260px] flex-wrap gap-1 overflow-y-auto">
-              {(chronoData?.daily_heatmap || []).map((d: any) => {
+              {(chronoData?.heatmap || []).map((d: any) => {
                 const hrs = (d.total_ms || 0) / 3_600_000
                 const bg =
                   hrs > 3 ? 'var(--enc-orange)' : hrs > 1.5 ? 'var(--enc-blue)' : hrs > 0.5 ? 'var(--accent-ok)' : 'var(--bg-surface-3)'
@@ -236,31 +249,35 @@ export function AnalyticsCorePage({ filters, theme }: AnalyticsCorePageProps) {
           <div className="surface-card p-5 lg:col-span-6">
             <div className="font-mono-tab text-[10px] uppercase text-[var(--accent)]">ARCHÉTYPE D&apos;AUDITEUR</div>
             <h2 className="mt-1 font-display text-2xl font-bold text-[var(--text-strong)]">
-              {personaData?.archetype?.name || '—'}
+              {personaData?.persona?.title || '—'}
             </h2>
+            <p className="mt-1 text-xs font-medium text-[var(--accent)]">{personaData?.persona?.tagline || ''}</p>
             <p className="mt-2 text-xs leading-relaxed text-[var(--text-secondary)]">
-              {personaData?.archetype?.description || ''}
+              {personaData?.persona?.description || ''}
             </p>
             <div className="mt-4 grid grid-cols-3 gap-2">
               <div className="surface-card-2 p-3">
                 <div className="font-mono-tab text-[10px] text-[var(--text-muted)]">ÂGE D&apos;ÉCOUTE</div>
                 <div className="font-mono-tab text-xl font-bold text-[var(--text-strong)]">
-                  {personaData?.listening_age ?? '—'} ans
+                  {personaData?.listening_age?.age ?? '—'} ans
                 </div>
               </div>
               <div className="surface-card-2 p-3">
                 <div className="font-mono-tab text-[10px] text-[var(--text-muted)]">ANNÉE MÉDIANE</div>
                 <div className="font-mono-tab text-xl font-bold text-[var(--text-strong)]">
-                  {personaData?.median_release_year ?? '—'}
+                  {personaData?.listening_age?.weighted_median_year ?? '—'}
                 </div>
               </div>
               <div className="surface-card-2 p-3">
                 <div className="font-mono-tab text-[10px] text-[var(--text-muted)]">DÉCENNIE CŒUR</div>
                 <div className="font-mono-tab text-xl font-bold text-[var(--text-strong)]">
-                  {personaData?.top_decade ? `${personaData.top_decade}s` : '—'}
+                  {personaData?.listening_age?.heart_decade || '—'}
                 </div>
               </div>
             </div>
+            {personaData?.listening_age?.formula_explanation && (
+              <p className="mt-3 text-[11px] text-[var(--text-muted)]">{personaData.listening_age.formula_explanation}</p>
+            )}
           </div>
           <div className="surface-card p-4 lg:col-span-6">
             <h3 className="mb-1 font-mono-tab text-xs font-semibold uppercase text-[var(--text-secondary)]">
@@ -279,14 +296,14 @@ export function AnalyticsCorePage({ filters, theme }: AnalyticsCorePageProps) {
               Radar d&apos;Obsessions (Phases 14 jours)
             </h3>
             <div className="space-y-2">
-              {(behaviorData?.obsessions || []).slice(0, 7).map((o: any, i: number) => (
+              {(behaviorData?.phases || []).slice(0, 7).map((o: any, i: number) => (
                 <div key={i} className="surface-card-2 p-2.5 text-xs">
                   <div className="flex justify-between font-semibold text-[var(--text-strong)]">
                     <span>{o.artist_name}</span>
                     <span className="font-mono-tab text-[var(--enc-orange)]">×{o.lift}</span>
                   </div>
                   <div className="font-mono-tab text-[11px] text-[var(--text-secondary)]">
-                    {o.window_start} → {o.window_end} · {o.plays} éc.
+                    {o.start_date} → {o.end_date} · {o.plays} éc.
                   </div>
                 </div>
               ))}
@@ -297,23 +314,23 @@ export function AnalyticsCorePage({ filters, theme }: AnalyticsCorePageProps) {
               Écoutes en Boucle (Consécutives)
             </h3>
             <div className="space-y-2">
-              {(behaviorData?.loops || []).slice(0, 7).map((l: any, i: number) => (
+              {(behaviorData?.loops?.top_looped || []).slice(0, 7).map((l: any, i: number) => (
                 <div key={i} className="surface-card-2 flex items-center justify-between p-2.5 text-xs">
                   <div className="min-w-0">
                     <div className="truncate font-semibold text-[var(--text-strong)]">{l.song_name}</div>
                     <div className="truncate text-[11px] text-[var(--text-secondary)]">{l.artist_name}</div>
                   </div>
-                  <span className="shrink-0 font-mono-tab font-bold text-[var(--accent)]">{l.max_streak}×</span>
+                  <span className="shrink-0 font-mono-tab font-bold text-[var(--accent)]">{l.max_consecutive}×</span>
                 </div>
               ))}
             </div>
           </div>
           <div className="surface-card p-4">
             <h3 className="mb-2 font-mono-tab text-xs font-semibold uppercase text-[var(--text-secondary)]">
-              Top Recherches Apple Music
+              Top Recherches Apple Music ({behaviorData?.searches?.total_searches ?? 0})
             </h3>
             <div className="space-y-1.5">
-              {(behaviorData?.top_searches || []).slice(0, 10).map((s: any, i: number) => (
+              {(behaviorData?.searches?.top_queries || []).slice(0, 10).map((s: any, i: number) => (
                 <div key={i} className="flex justify-between rounded bg-[var(--bg-surface-2)] px-2.5 py-1.5 text-xs">
                   <span className="truncate text-[var(--text-strong)]">{s.query}</span>
                   <span className="font-mono-tab text-[var(--text-secondary)]">{s.count}×</span>
@@ -386,10 +403,12 @@ export function AnalyticsCorePage({ filters, theme }: AnalyticsCorePageProps) {
                 <div key={s.session_id} className="surface-card-2 p-2.5 text-xs">
                   <div className="flex justify-between font-mono-tab text-[11px] text-[var(--accent)]">
                     <span>Session #{s.session_id}</span>
-                    <span>{formatHours(s.total_ms)} · {s.tracks_count} titres</span>
+                    <span>
+                      {formatHours(s.total_ms)} · {s.plays} titres
+                    </span>
                   </div>
                   <div className="mt-1 truncate text-[11px] text-[var(--text-secondary)]">
-                    {(s.started_at_local || '').replace('T', ' ').slice(0, 16)} · {s.device_label}
+                    {(s.start_local || '').replace('T', ' ').slice(0, 16)} · {s.device_label}
                   </div>
                 </div>
               ))}
