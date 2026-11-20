@@ -13,12 +13,17 @@
 - La **V2 (*Sonic Odyssey*)** avait réussi l'effet « wahou » grâce à sa profondeur WebGL, ses auras lumineuses extraites des pochettes, sa Galaxie 3D et son dock flottant spatial.
 - La **V3 (*Continuum*)** a fait le choix inverse : une interface éditoriale plate et austère (« Zéro Néon »), où la promesse « Studio Hi-Fi » s'est réduite à des cartes CSS 2D avec des boutons stylisés au lieu d'une **vraie chaîne Hi-Fi reconstituée**.
 
-### Le Manifeste V4 : « Le 3D n'est pas un onglet, c'est ton salon d'écoute »
-Dans la V4, tu n'arrives plus sur un tableau de bord plat : **tu entres dans ton propre studio d'écoute Hi-Fi en 3D temps réel**, chaleureux, tactile et vivant :
-- **Matériaux physiques tangibles :** bois de noyer chaleureux, aluminium brossé anodisé, verre/plexiglas, feutrine, vinyle brillant à microsillons, aiguilles de VU-mètres rétro-éclairées ambre, tubes à vide incandescents.
-- **Éclairage vivant (l'âme de la V2 sublimée) :** Les lampes d'ambiance, les reflets sur l'aluminium et le halo mural derrière la chaîne s'adaptent en fondu doux à la **palette de couleurs de l'album posé sur la platine**.
-- **Caméra cinématique fluide :** Pas de sauts secs entre pages. Cliquer sur le Bac à Vinyles, la Platine, l'Ampli, le Moniteur ou le Portail Galaxie fait **glisser la caméra en douceur** (courbes amorties GSAP + profondeur visuelle) vers l'objet choisi.
-- **Sound Design mécanique (Web Audio local, 0 DRM, désactivable) :** Clic lourd du bouton Power de l'ampli, glissement du carton de la pochette, *clack* des potentiomètres crantés, léger crépitement vinyle au posé du diamant.
+### Le Manifeste V4 : « Le 3D n'est pas un onglet, c'est ton sanctuaire d'écoute »
+Dans la V4, tu n'arrives plus sur un tableau de bord plat : **tu entres dans ton propre sanctuaire d'écoute en 3D temps réel**, chaleureux, ultra-tactile et vivant :
+- **Le Tourne-Disque Vinyle 3D reste la star absolue (Cœur #1 du projet) :** L'expérience physique centrale est bien le **Bac à Vinyles 3D** (fouiller, sortir la pochette, la retourner 360°, sortir le disque 12" de sa sous-pochette) et la **Platine Vinyle** (plateau tournant, diamant, bras manipulable sur les sillons pour changer de titre).
+- **Le « Game » Audio Vintage / Hi-Fi (Le Meuble Complet) :** Dans le vrai monde audiophile, sous la platine vinyle, on a le meuble avec :
+  1. **L'Amplificateur** (les VU-mètres à aiguilles qui bougent avec la musique et les tubes à vide ambre).
+  2. **Un Lecteur CD de salon vintage / audiophile (Tiroir motorisé)** : Idéal pour les albums des années 90–2000 ou pour ceux qui préfèrent le format compact ! Tu ouvres un **porte-CDs / tour à boîtiers cristal (*Jewel Case*)**, tu sors le boîtier, tu l'ouvres, tu prends le disque brillant avec reflets holographiques/arc-en-ciel, tu appuies sur `EJECT` du lecteur CD, le tiroir motorisé s'ouvre avec un son mécanique délicieux, tu déposes le CD, le tiroir se referme et l'afficheur digital compte les pistes !
+  3. *(Option future)* : Une **platine Cassette audio** avec têtes de lecture et bandes qui défilent.
+- **Matériaux physiques tangibles :** bois de noyer chaleureux, aluminium brossé anodisé, plexiglas, feutrine, vinyle brillant à microsillons, plastique polycarbonate avec reflets holographiques (CD), aiguilles rétro-éclairées ambre, tubes à vide incandescents.
+- **Éclairage vivant (l'âme de la V2 sublimée) :** Lampes d'ambiance et halo mural s'adaptant à la palette de l'album en cours.
+- **Caméra cinématique fluide (GSAP) :** Balayage amorti entre le Bac à Vinyles, la Platine, le Lecteur CD/Ampli, et le Moniteur Studio.
+- **Sound Design mécanique (Web Audio local, 0 DRM, désactivable) :** Frottement du carton/boîtier cristal, clic lourd des touches, cliquetis du tiroir CD motorisé, léger crépitement vinyle.
 
 ---
 
