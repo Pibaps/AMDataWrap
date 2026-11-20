@@ -1,9 +1,10 @@
-# Plan Draft V4 — « SONIC ODYSSEY × VINYL STUDIO 3D » : Esthétique V2, Disquaire & Tourne-Disque 3D + Multi-Plateformes à 0 €
+# Plan Draft V4 — « SONIC ODYSSEY × VINYL STUDIO 3D » : Connexion Multi-Plateformes, Lecture Complète à 0 € & Tourne-Disque 3D (Style V2)
 
 **Base technique :** `AMDataWrap` V2 (*Sonic Odyssey* — direction artistique & spatiale) + socle analytique V3 (FastAPI + SQLite WAL + DuckDB/Parquet)  
 **Frontend dédié :** `frontend-v4/` (port `5176`) — *V1, V2 et V3 conservées intactes en parallèle.*  
 **Statut :** Draft d'orientation (prêt à être affiné en détail via `/grill-me` avant implémentation)  
-**Contrainte cardinale :** **Gros effet WOW 3D inspiré de la V2**, **100 % gratuit (0 €)**, et **fluide sur tous PCs, navigateurs et smartphones** (WebGL2 par défaut, WebGPU en boost optionnel PC).  
+**Enjeu #1 de la V4 :** **Connexion aux différentes plateformes (Apple Music, Spotify, YouTube Music, Deezer, TIDAL), import/tracking unifié et lecture réelle des morceaux entiers à 0 €** — au service d'une interface **style V2** centrée sur le **Bac à Vinyles & Tourne-Disque 3D**.  
+**Contrainte cardinale :** **100 % gratuit (0 €)**, **gros effet WOW 3D inspiré de la V2**, et **fluide sur tous PCs, navigateurs et smartphones** (WebGL2 par défaut, WebGPU en boost optionnel PC).  
 **Références techniques :** [`docs/references/`](../references/) & [`docs/feasibility/`](../feasibility/).
 
 ---
