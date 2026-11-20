@@ -1,81 +1,50 @@
-# Plan Draft V4 — « HI-FI SANCTUARY 3D » : Vraie Chaîne Hi-Fi 3D, Disquaire Interactif & Multi-Plateformes à 0 €
+# Plan Draft V4 — « SONIC ODYSSEY × VINYL STUDIO 3D » : Esthétique V2, Disquaire & Tourne-Disque 3D + Multi-Plateformes à 0 €
 
-**Statut :** Draft d'architecture V4 (revu suite au retour visuel sur la V3)  
-**Frontend dédié :** `frontend-v4/` (port `5176`) — *V1, V2 et V3 conservées intactes en parallèle sur le même backend FastAPI + SQLite WAL + DuckDB.*  
-**Contrainte cardinale :** **Gros effet WOW 3D dès la première seconde**, **100 % gratuit (0 € développeur / 0 € serveur)**, et **fluide sur tous les navigateurs PC & smartphones** (WebGL2 par défaut, WebGPU en boost optionnel PC).  
+**Base technique :** `AMDataWrap` V2 (*Sonic Odyssey* — direction artistique & spatiale) + socle analytique V3 (FastAPI + SQLite WAL + DuckDB/Parquet)  
+**Frontend dédié :** `frontend-v4/` (port `5176`) — *V1, V2 et V3 conservées intactes en parallèle.*  
+**Statut :** Draft d'orientation (prêt à être affiné en détail via `/grill-me` avant implémentation)  
+**Contrainte cardinale :** **Gros effet WOW 3D inspiré de la V2**, **100 % gratuit (0 €)**, et **fluide sur tous PCs, navigateurs et smartphones** (WebGL2 par défaut, WebGPU en boost optionnel PC).  
 **Références techniques :** [`docs/references/`](../references/) & [`docs/feasibility/`](../feasibility/).
 
 ---
 
-## 1. Constat V2 vs V3 & Manifeste Créatif V4
+## 1. Constat V2 vs V3 & Direction Artistique V4
 
 ### Pourquoi la V3 n'a pas convaincu
-- La **V2 (*Sonic Odyssey*)** avait réussi l'effet « wahou » grâce à sa profondeur WebGL, ses auras lumineuses extraites des pochettes, sa Galaxie 3D et son dock flottant spatial.
-- La **V3 (*Continuum*)** a fait le choix inverse : une interface éditoriale plate et austère (« Zéro Néon »), où la promesse « Studio Hi-Fi » s'est réduite à des cartes CSS 2D avec des boutons stylisés au lieu d'une **vraie chaîne Hi-Fi reconstituée**.
+- La **V2 (*Sonic Odyssey*)** avait réussi l'effet « wahou » grâce à son atmosphère WebGL immersive (`AmbientNebulaCanvas`, particules, anneaux harmoniques, Galaxie 3D), ses auras lumineuses extraites des pochettes (`--aura-1/2/3`), son dock flottant visionOS et sa typographie éditoriale (`Syne` + `Instrument Serif` + `JetBrains Mono`).
+- La **V3 (*Continuum*)** a trop aplati l'interface (« Zéro Néon ») et sa promesse « Studio Hi-Fi » s'est révélée décevante.
 
-### Le Manifeste V4 : « Le 3D n'est pas un onglet, c'est ton sanctuaire d'écoute »
-Dans la V4, tu n'arrives plus sur un tableau de bord plat : **tu entres dans ton propre sanctuaire d'écoute en 3D temps réel**, chaleureux, ultra-tactile et vivant :
-- **Le Tourne-Disque Vinyle 3D reste la star absolue (Cœur #1 du projet) :** L'expérience physique centrale est bien le **Bac à Vinyles 3D** (fouiller, sortir la pochette, la retourner 360°, sortir le disque 12" de sa sous-pochette) et la **Platine Vinyle** (plateau tournant, diamant, bras manipulable sur les sillons pour changer de titre).
-- **Le « Game » Audio Vintage / Hi-Fi (Le Meuble Complet) :** Dans le vrai monde audiophile, sous la platine vinyle, on a le meuble avec :
-  1. **L'Amplificateur** (les VU-mètres à aiguilles qui bougent avec la musique et les tubes à vide ambre).
-  2. **Un Lecteur CD de salon vintage / audiophile (Tiroir motorisé)** : Idéal pour les albums des années 90–2000 ou pour ceux qui préfèrent le format compact ! Tu ouvres un **porte-CDs / tour à boîtiers cristal (*Jewel Case*)**, tu sors le boîtier, tu l'ouvres, tu prends le disque brillant avec reflets holographiques/arc-en-ciel, tu appuies sur `EJECT` du lecteur CD, le tiroir motorisé s'ouvre avec un son mécanique délicieux, tu déposes le CD, le tiroir se referme et l'afficheur digital compte les pistes !
-  3. *(Option future)* : Une **platine Cassette audio** avec têtes de lecture et bandes qui défilent.
-- **Matériaux physiques tangibles :** bois de noyer chaleureux, aluminium brossé anodisé, plexiglas, feutrine, vinyle brillant à microsillons, plastique polycarbonate avec reflets holographiques (CD), aiguilles rétro-éclairées ambre, tubes à vide incandescents.
-- **Éclairage vivant (l'âme de la V2 sublimée) :** Lampes d'ambiance et halo mural s'adaptant à la palette de l'album en cours.
-- **Caméra cinématique fluide (GSAP) :** Balayage amorti entre le Bac à Vinyles, la Platine, le Lecteur CD/Ampli, et le Moniteur Studio.
-- **Sound Design mécanique (Web Audio local, 0 DRM, désactivable) :** Frottement du carton/boîtier cristal, clic lourd des touches, cliquetis du tiroir CD motorisé, léger crépitement vinyle.
+### La Direction V4 : L'ADN Spatial V2 + Le Disquaire & Tourne-Disque 3D (Sans Chaîne Hi-Fi)
+- **Pas de chaîne Hi-Fi :** On abandonne le concept de rack ampli/enceintes. On reprend **l'univers spatial, lumineux et fluide de la V2** (nébuleuse/auras réactives aux couleurs de l'album, *glassmorphism*, dock flottant, Galaxie 3D, Wrapped cinématique) et on y place au centre **un vrai Bac à Vinyles & Tourne-Disque 3D tactile**.
+- **Éclairage & Auras V2 :** L'ambiance de la scène, les reflets sur le plateau et le halo autour de la platine épousent en douceur la palette de l'album posé sur le tourne-disque.
+- **Caméra cinématique fluide (GSAP) :** Transitions souples entre le **Bac à Vinyles 3D**, la **Platine Tourne-Disque 3D**, la **Galaxie 3D** et les vues analytiques en surimpression *glassmorphism*.
+- **Sound Design optionnel (Web Audio local, 0 DRM) :** Frottement papier à la sortie de pochette, déclic Start/Stop, léger *crackle* au posé du diamant.
 
 ---
 
-## 2. La Vraie Chaîne Hi-Fi 3D Reconstituée (5 Modules Interactifs)
+## 2. Cœur Interactif 3D : Le Disquaire & Tourne-Disque
 
-Toute l'application s'articule autour d'une **scène 3D persistante unique** composée de 5 éléments physiques interactifs posés sur un meuble audiophile :
-
-### Module 1 — Le Bac à Vinyles 3D (*Record Crate*)
-- Meuble bac en bois/métal rempli de **tes vrais albums les plus écoutés** (filtrables : *Top Albums*, *Par Ère*, *Par Genre*, *Récents*, bouton *« Digging Aléatoire »*).
-- **Feuilletage physique (*flip-through*) :** Glisser à la souris ou au doigt incline les pochettes en cascade comme chez un vrai disquaire.
+### 1. Le Bac à Vinyles 3D (*Record Crate*)
+- Bac à disques rempli de **tes vrais albums** (filtrables : *Top Albums*, *Par Ère*, *Par Genre*, *Récents*, bouton *« Digging Aléatoire »*).
+- **Feuilletage physique (*flip-through*) :** Glisser à la souris ou au doigt incline les pochettes en cascade.
 - **Inspection & Retournement 360° (Recto ↔ Verso) :**
-  - Clic/Tap sur une pochette → elle sort du bac et vient face caméra.
-  - **Recto :** Pochette HD officielle avec tranche (*spine*) imprimée et grain carton subtil.
-  - **Verso authentique :**
-    - Si disponible sur **Cover Art Archive** : la **vraie pochette arrière (`back_cover_url`)**.
-    - Sinon (ou en bascule *« Fiche Pressage »*) : un **verso haute fidélité généré sur `<canvas>`** avec les **vraies informations du pressage vinyle** issues de MusicBrainz (découpage réel **Face A / Face B / C / D**, durées exactes, **Label**, **N° de catalogue**, année & pays de pressage, code-barres) + ton **tampon collector personnel** (nombre d'écoutes, heures, première découverte).
-    - **Tracklist cliquable :** cliquer sur une piste sur le verso lance directement le vinyle sur ce sillon précis.
-- **Extraction du disque (`DISC_SLIDE_OUT`) :** Glisser vers le côté (ou clic *« Sortir le vinyle »*) ouvre la sous-pochette et fait glisser le **disque vinyle 12"** hors de la pochette, avec choix **Face A ↔ Face B**.
+  - Clic/Tap → la pochette sort du bac et vient face caméra.
+  - **Recto :** Pochette HD officielle avec tranche (*spine*) imprimée et texture carton.
+  - **Verso authentique :** Vraie pochette arrière (**Cover Art Archive**) si disponible, ou **verso haute fidélité généré sur `<canvas>`** avec les **vraies informations du pressage vinyle** (MusicBrainz : découpage réel **Face A / Face B / C / D**, durées exactes, **Label**, **N° de catalogue**, année & pays, code-barres) + tes stats perso (écoutes, heures, première découverte).
+  - **Tracklist cliquable :** Cliquer sur un titre au dos lance la pose du disque directement sur ce sillon.
+- **Extraction du disque :** Glisser sur le côté (ou clic *« Sortir le vinyle »*) ouvre la sous-pochette et fait glisser le **disque vinyle 12"** dehors, avec choix **Face A ↔ Face B**.
 
-### Module 2 — La Platine Vinyle Audiophile 3D (*Turntable*)
-Inspirée des platines cultes (*Technics SL-1200 / Braun / platines bois vintage*) :
-- **Pose cinématique :** Le disque vole en courbe fluide jusqu'au **plateau en aluminium brossé** (bord à points stroboscopiques lumineux) pendant que la pochette va se poser sur le **chevalet *« Now Playing »*** à côté de la platine.
-- **Disque vinyle ultra-crédible :**
-  - **Sillons proportionnels aux vraies durées** des morceaux de la face (bandes sombres *rills* séparant chaque piste).
-  - **Macaron central (*Center Label*)** : vraie texture Cover Art Archive (`medium`) si disponible, sinon macaron typographié généré (Label, Face A/B, 33⅓ RPM).
-  - Rotation **33⅓ / 45 RPM à inertie physique** (accélération progressive au démarrage, ralentissement réaliste au freinage).
+### 2. La Platine Tourne-Disque 3D (*Turntable*)
+- **Pose cinématique :** Le disque vole en courbe fluide jusqu'au **plateau** pendant que la pochette se pose sur un chevalet *« Now Playing »* à côté.
+- **Disque vinyle réaliste :** Sillons concentriques proportionnels aux vraies durées des pistes de la face, **macaron central (*Center Label*)** authentique (`medium` CAA ou généré), rotation **33⅓ / 45 RPM à inertie physique**.
 - **Bras de lecture (*Tonearm*) 100 % interactif :**
-  - Se lève, se déplace automatiquement jusqu'au sillon exact du morceau lancé et descend doucement.
-  - Avance progressivement vers le centre au rythme de `currentTime / faceDuration`.
-  - **Drag manuel du bras (ou clic direct sur un sillon)** : permet de changer de morceau ou de naviguer (`seek`) en temps réel !
-- **Commandes physiques cliquables en 3D :** `START / STOP` lumineux, levier `CUE` (lève/baisse le bras sans stopper le plateau), bouton `FLIP A/B` (lève le bras, retourne physiquement le disque en l'air et lance la face B), `EJECT` (range le vinyle dans sa pochette), capot plexiglas articulé.
+  - Se lève, se cale automatiquement sur le sillon de la piste choisie, descend au démarrage et avance vers le centre au rythme de `currentTime / faceDuration`.
+  - **Drag manuel du bras (ou clic sur un sillon)** : permet de changer de piste ou de naviguer (`seek`) en temps réel.
+- **Commandes directement sur la platine :** `START / STOP` (inertie plateau), levier `CUE`, `FLIP A/B` (retourne physiquement le disque en 3D), `EJECT` (range le disque dans la pochette), capot transparent.
 
-### Module 3 — L'Amplificateur Hi-Fi Intégré 3D (*Vintage Amp Stack*)
-Inspiré des amplis mythiques (*McIntosh / Marantz / Pioneer SX*) :
-- **Façade aluminium brossé & verre noir** avec **2 vrais VU-mètres analogiques à aiguilles rétro-éclairées** (ambre chaud ou bleu glacier) animés par physique de ressort amorti (*damped spring*).
-- **Tubes à vide (*Vacuum Tubes*)** sur le dessus du châssis qui s'allument progressivement en orange incandescent quand la lecture démarre.
-- **Potentiomètres rotatifs 3D fonctionnels :**
-  - `VOLUME` (tourne en 3D au drag/molette et pilote le volume réel),
-  - `SOURCE` (sélecteur cranté : `YOUTUBE` · `APPLE MUSIC` · `SPOTIFY` · `PREVIEW 30s` · `LIVE SYNC`),
-  - `AMBIANCE` (bascule l'éclairage de la pièce : *Studio Warm* · *Midnight Aura* · *Daylight*).
-- **Afficheur VFD / OLED intégré dans la façade :** Affiche en temps réel le titre, l'artiste, le timer, le **BPM**, la **tonalité Camelot** et un **spectre 28 bandes** (vrai FFT sur extraits 30s non-DRM ; animation rythmique BPM-synced ultra-réaliste sur flux DRM).
-
-### Module 4 — Les Enceintes Hi-Fi & Ambiance Spatiale
-- Paire d'enceintes bois & tissu acoustique de part et d'autre de la chaîne : les **membranes des woofers vibrent physiquement** au rythme des basses.
-- **Aura dynamique (héritage V2) :** L'éclairage de la pièce épouse la pochette en cours, avec subtiles poussières lumineuses dans le faisceau (PC) et reflets doux sur la table.
-
-### Module 5 — Le Moniteur Studio « Clip & Data » + Portail Galaxie 3D
-Un petit **moniteur de contrôle rétro-futuriste** posé sur le meuble Hi-Fi, qui résout élégamment deux besoins :
-1. **Intégration naturelle du lecteur YouTube IFrame (0 €) :** En mode lecture gratuite universelle, l'iframe vidéo obligatoire (≥ 200 × 200 px selon les ToS YouTube) s'affiche **dans l'écran de ce moniteur studio** (encadré, esthétique, jamais caché) — plus aucun carré disgracieux !
-2. **Accès à toutes les Analytics V2/V3 sans casser l'immersion :**
-   - Cliquer sur le moniteur ou le dock flottant *glassmorphism* (style visionOS/V2) ouvre en surimpression translucide les vues **Tops, Chronobiologie, Persona, Science Lab (Ères, Camelot, Russell), Atlas Mondial, Paroles LRCLIB, Sessions & Historique**.
-   - Un bouton **« Portail Galaxie 3D »** et **« Wrapped Sonic Odyssey 3D »** fait basculer la scène 3D en douceur vers la Galaxie Sonore 3D et le Wrapped cinématique plein écran !
+### 3. Intégration YouTube & Analytics V2 dans l'écrin Spatial
+- **Mini-lecteur YouTube intégré proprement :** En mode lecture gratuite universelle (`YouTube IFrame Player API`), la fenêtre vidéo obligatoire (≥ 200 × 200 px ToS) s'intègre comme un petit **cartouche flottant *glassmorphism* style V2** à côté de la platine (escamotable/repositionnable, jamais caché en `display: none`).
+- **Analytics & Galaxie 3D V2 sublimés :** Les vues **Tops, Chronobiologie, Persona, Obsessions, Science Lab, Paroles LRCLIB, Sessions & Historique** ainsi que la **Galaxie 3D** et le **Wrapped Sonic Odyssey** conservent l'esthétique V2 (*glassmorphism*, nébuleuse, auras pochette).
 
 ---
 
