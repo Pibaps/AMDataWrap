@@ -4,12 +4,10 @@ Ce dossier centralise les analyses de faisabilité, le plan d'évolution V4, les
 
 ## 📂 `plans/` — Feuilles de Route
 - **[PLAN_V4_DRAFT.md](plans/PLAN_V4_DRAFT.md)**  
-  Plan draft complet de la **V4 (« Disquaire 3D Tactile, Lecture Complète & Multi-Plateformes à 0 € »)** :
-  - Imports RGPD/Takeout (Apple Music, Spotify, YouTube Music, Deezer, TIDAL) + enrichissement ISRC & pressages vinyles réels (Deezer Public API → MusicBrainz/CAA → iTunes).
-  - Tracking temps réel 0 € (Windows SMTC, macOS `mediaremote-adapter`, Linux MPRIS2, Web Scrobbler, ListenBrainz/Pano/FastScrobbler).
-  - Lecture complète pluggable 0 € (`YouTube IFrame + ytmusicapi` universel + Extension navigateur MV3 pilotant `MusicKit.getInstance()` sur Apple Music Web & Spotify/YTM/Deezer/TIDAL).
-  - Expérience **Bac à Vinyles 3D → Retournement Recto/Verso → Extraction du Disque → Tourne-Disque 3D interactif**.
-  - Compatibilité universelle **WebGL2-first (PC & Smartphones)** + **WebGPU en mode boosté PC**.
+  Plan draft complet de la **V4 (« HI-FI SANCTUARY 3D »)** :
+  - **Vraie Chaîne Hi-Fi 3D reconstituée** (`frontend-v4/`, port `5176`) : Platine Vinyle audiophile (bras interactif, sillons proportionnels, inertie 33⅓ RPM), Amplificateur vintage à VU-mètres analogiques & tubes incandescents, Bac à Vinyles 3D (retournement Recto/Verso authentique, sortie du disque, Faces A/B), Enceintes vibrantes, Moniteur Studio, éclairage réactif pochette et caméra cinématique GSAP.
+  - **100 % à 0 € :** Imports RGPD/Takeout (Apple Music, Spotify, YouTube Music, Deezer, TIDAL), enrichissement ISRC & pressages vinyles réels (Deezer → MusicBrainz/CAA → iTunes), tracking temps réel multi-OS/Web/Mobile, et lecture complète pluggable (`YouTube IFrame + ytmusicapi` dans le moniteur studio + Extension MV3 `MusicKit.getInstance()`).
+  - **Universel PC & Smartphones :** 4 paliers adaptatifs (**WebGL2** par défaut partout, **WebGPU** en mode boosté PC).
 
 ## 📂 `feasibility/` — Analyses de Faisabilité
 - **[FEASIBILITY_APPLE_MUSIC_PLAYER.md](feasibility/FEASIBILITY_APPLE_MUSIC_PLAYER.md)**  
