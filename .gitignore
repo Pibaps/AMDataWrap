@@ -2,12 +2,22 @@
 Apple Media Services information.zip
 *.zip
 data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.parquet
+
+# Environment & Secrets
+.env
+.env.*
 
 # Python
 backend/.venv/
+.venv/
 __pycache__/
-*.pyc
+*.py[cod]
 .pytest_cache/
+.hypothesis/
 
 # Node / Frontend
 node_modules/
@@ -15,7 +25,13 @@ dist/
 .vite/
 *.tsbuildinfo
 
+# Testing & Reports
+playwright-report/
+test-results/
+
 # OS / Editor
 .DS_Store
 Thumbs.db
 *.log
+.vscode/
+.idea/

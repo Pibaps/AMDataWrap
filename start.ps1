@@ -1,4 +1,4 @@
-﻿# AMDataWrap launcher — Backend (:8000) + V1 Classique (:5173) + V2 Spatial 3D (:5174)
+# AMDataWrap launcher — Backend (:8000) + V1 Classique (:5173) + V2 Spatial 3D (:5174)
 $ErrorActionPreference = "SilentlyContinue"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
