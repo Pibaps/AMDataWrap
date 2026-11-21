@@ -10,6 +10,7 @@ via atomic temp-file + `os.replace()`. DuckDB queries ONLY this immutable Parque
 from __future__ import annotations
 
 import os
+import platform
 import tempfile
 import threading
 from datetime import datetime, timezone
@@ -22,6 +23,31 @@ import pyarrow.parquet as pq
 
 from .. import db as db_mod
 from ..db import DATA_DIR, PARQUET_SNAPSHOT_PATH, db_session
+
+DUCKDB_SPILL_DIR = DATA_DIR / "duckdb_spill"
+_DUCKDB_ALLOCATOR_CONFIGURED = False
+
+
+def configure_duckdb_global_allocator() -> None:
+    """Configure DuckDB global allocator background purging once on Linux 64-bit.
+
+    Never call `RESET SESSION allocator_background_threads` (DuckDB bug disables
+    background purging for the whole process).
+    """
+    global _DUCKDB_ALLOCATOR_CONFIGURED
+    if _DUCKDB_ALLOCATOR_CONFIGURED:
+        return
+    _DUCKDB_ALLOCATOR_CONFIGURED = True
+    DUCKDB_SPILL_DIR.mkdir(parents=True, exist_ok=True)
+    if platform.system() == "Linux" and platform.machine().lower() in ("x86_64", "amd64", "aarch64", "arm64"):
+        con = duckdb.connect(database=":memory:")
+        try:
+            con.execute("SET GLOBAL allocator_background_threads = true;")
+            con.execute("SET GLOBAL allocator_flush_threshold = '16MB';")
+        except Exception:
+            pass
+        finally:
+            con.close()
 
 _SNAPSHOT_LOCK = threading.Lock()
 _LAST_EXPORT_META: dict[str, Any] = {
@@ -188,12 +214,23 @@ def get_snapshot_status() -> dict[str, Any]:
 def query_parquet(sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
     """Run a read-only DuckDB analytical query against the immutable Parquet snapshot.
 
+    Uses a memory-confined ephemeral connection (64MB, 2 threads, spill-to-disk)
+    so FastAPI RSS stays bounded around 90-130 MB.
     The placeholder `{parquet}` in SQL is replaced with the quoted Parquet path.
     """
     path = ensure_parquet_snapshot()
+    DUCKDB_SPILL_DIR.mkdir(parents=True, exist_ok=True)
     quoted = str(path).replace("'", "''")
     rendered = sql.replace("{parquet}", f"read_parquet('{quoted}')")
-    con = duckdb.connect(database=":memory:")
+    con = duckdb.connect(
+        database=":memory:",
+        config={
+            "memory_limit": "64MB",
+            "threads": 2,
+            "preserve_insertion_order": False,
+            "temp_directory": str(DUCKDB_SPILL_DIR),
+        },
+    )
     try:
         cur = con.execute(rendered, params or [])
         cols = [d[0] for d in cur.description] if cur.description else []

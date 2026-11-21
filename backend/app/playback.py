@@ -28,6 +28,7 @@ from .continuum.live_hub import now_playing_hub
 from .continuum.reconciler import IncomingScrobble, reconcile_batch, update_now_playing
 from .db import db_session
 from .normalize import make_track_key, similarity_score
+from .vinyl_enrichment import fetch_deezer_track_metadata
 
 playback_router = APIRouter(tags=["v4-playback"])
 
@@ -36,22 +37,33 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _search_ytmusic_sync(query: str, song_name: str, artist_name: str) -> dict[str, Any] | None:
+def _search_ytmusic_sync(
+    query: str, song_name: str, artist_name: str, album_name: str = ""
+) -> dict[str, Any] | None:
     """Resolve a YouTube Music song `videoId` without authentication using `ytmusicapi`."""
     try:
         from ytmusicapi import YTMusic  # type: ignore
 
         ytm = YTMusic()
-        results = ytm.search(query, filter="songs", limit=5) or []
+        results = ytm.search(query, filter="songs", limit=6) or []
         best = None
         best_score = 0.0
+        clean_album = album_name if album_name and album_name.lower() != "single / inconnu" else ""
         for item in results:
             vid = item.get("videoId")
             if not vid:
                 continue
             title = item.get("title") or ""
             artists = ", ".join(a.get("name", "") for a in (item.get("artists") or []) if isinstance(a, dict))
-            score = similarity_score(song_name, title) * 0.65 + similarity_score(artist_name, artists) * 0.35
+            alb = (item.get("album") or {}).get("name") or "" if isinstance(item.get("album"), dict) else ""
+            if clean_album:
+                score = (
+                    similarity_score(song_name, title) * 0.55
+                    + similarity_score(artist_name, artists) * 0.25
+                    + similarity_score(clean_album, alb) * 0.20
+                )
+            else:
+                score = similarity_score(song_name, title) * 0.65 + similarity_score(artist_name, artists) * 0.35
             if score > best_score:
                 best_score = score
                 best = {
@@ -122,29 +134,38 @@ async def api_resolve_playback(
     artist: str = Query(""),
     album: str = Query(""),
     track_key: str | None = Query(None),
+    force_refresh: bool = Query(False),
 ) -> dict[str, Any]:
     """Resolve a track to a playable YouTube `videoId` (cached in `platform_track_mappings`) + preview fallback."""
     tkey = track_key or make_track_key(song, album or "Single / Inconnu")
     preview_url: str | None = None
     artwork_url: str | None = None
+    effective_artist = artist
+    effective_album = album
 
     with db_session() as conn:
         # 1. Check permanent cache in platform_track_mappings
-        cached = conn.execute(
-            """
-            SELECT external_id, url FROM platform_track_mappings
-            WHERE track_key = ? AND provider = 'youtube'
-            LIMIT 1
-            """,
-            (tkey,),
-        ).fetchone()
+        cached = None
+        if not force_refresh:
+            cached = conn.execute(
+                """
+                SELECT external_id, url FROM platform_track_mappings
+                WHERE track_key = ? AND provider = 'youtube'
+                LIMIT 1
+                """,
+                (tkey,),
+            ).fetchone()
         t_row = conn.execute(
-            "SELECT preview_url, artwork_url, duration_ms FROM tracks_catalog WHERE track_key = ?",
+            "SELECT artist_name, album_name, preview_url, artwork_url, duration_ms FROM tracks_catalog WHERE track_key = ?",
             (tkey,),
         ).fetchone()
         if t_row:
             preview_url = t_row["preview_url"]
             artwork_url = t_row["artwork_url"]
+            if t_row["artist_name"]:
+                effective_artist = t_row["artist_name"]
+            if t_row["album_name"] and not effective_album:
+                effective_album = t_row["album_name"]
 
         if cached and cached["external_id"]:
             return {
@@ -158,9 +179,10 @@ async def api_resolve_playback(
                 "artwork_url": artwork_url,
             }
 
-    # 2. Live resolve via ytmusicapi (no auth)
-    query = f"{artist} {song}".strip()
-    found = await asyncio.to_thread(_search_ytmusic_sync, query, song, artist)
+    # 2. Live resolve via ytmusicapi (no auth) — include album context to avoid OST/short-title mismatches
+    clean_album = effective_album if effective_album and effective_album.lower() != "single / inconnu" else ""
+    query = f"{effective_artist} {song} {clean_album}".strip() if clean_album else f"{effective_artist} {song}".strip()
+    found = await asyncio.to_thread(_search_ytmusic_sync, query, song, effective_artist, clean_album)
     video_id = found["video_id"] if found else None
     url = found["url"] if found else None
 
@@ -272,6 +294,75 @@ async def api_playback_scrobble(payload: PlaybackScrobbleIn) -> dict[str, Any]:
 # Extension MV3 Bridge WebSocket Hub (`WS /ws/bridge`)
 # ---------------------------------------------------------------------------
 
+@playback_router.get("/api/v4/playback/apple-hints")
+async def api_playback_apple_hints(
+    song: str = Query(..., min_length=1),
+    artist: str = Query(""),
+    album: str = Query(""),
+    track_key: str | None = Query(None),
+) -> dict[str, Any]:
+    """Return cached Apple Music catalog ID and known ISRCs (from `recording_isrcs` or live Deezer)."""
+    clean_album = album if album and album.lower() != "single / inconnu" else ""
+    tkey = track_key or make_track_key(song, clean_album or "Single / Inconnu")
+    cached_song_id: str | None = None
+    isrcs: list[str] = []
+    effective_artist = artist
+    effective_album = clean_album
+
+    with db_session() as conn:
+        cached = conn.execute(
+            """
+            SELECT external_id FROM platform_track_mappings
+            WHERE track_key = ? AND provider = 'apple_music'
+            LIMIT 1
+            """,
+            (tkey,),
+        ).fetchone()
+        if cached and cached["external_id"]:
+            cached_song_id = str(cached["external_id"])
+
+        isrc_rows = conn.execute(
+            "SELECT DISTINCT isrc FROM recording_isrcs WHERE track_key = ? AND isrc IS NOT NULL AND isrc != ''",
+            (tkey,),
+        ).fetchall()
+        isrcs = [str(r["isrc"]).strip().upper() for r in isrc_rows if r["isrc"]]
+
+        t_row = conn.execute(
+            "SELECT artist_name, album_name FROM tracks_catalog WHERE track_key = ?",
+            (tkey,),
+        ).fetchone()
+        if t_row:
+            if not effective_artist and t_row["artist_name"]:
+                effective_artist = t_row["artist_name"]
+            if not effective_album and t_row["album_name"]:
+                effective_album = t_row["album_name"]
+
+    if not isrcs and not cached_song_id and effective_artist and effective_artist.lower() != "artiste inconnu":
+        try:
+            dz = await fetch_deezer_track_metadata(effective_artist, song)
+        except Exception:
+            dz = None
+        if dz and dz.get("isrc"):
+            found_isrc = str(dz["isrc"]).strip().upper()
+            isrcs.append(found_isrc)
+            now_iso = _utc_now_iso()
+            with db_session() as conn:
+                exists = conn.execute("SELECT 1 FROM tracks_catalog WHERE track_key = ?", (tkey,)).fetchone()
+                if exists:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO recording_isrcs (track_key, isrc, source, created_at) VALUES (?, ?, 'deezer', ?)",
+                        (tkey, found_isrc, now_iso),
+                    )
+
+    return {
+        "ok": True,
+        "track_key": tkey,
+        "apple_song_id": cached_song_id,
+        "isrcs": isrcs[:10],
+        "artist_name": effective_artist,
+        "album_name": effective_album,
+    }
+
 class ExtensionBridgeHub:
     """Routes playback commands from Frontend V4 to Browser Extension MV3 and state back."""
 
@@ -365,8 +456,30 @@ async def ws_extension_bridge(websocket: WebSocket, role: str = "extension") -> 
                             is_playing=bool(data.get("is_playing")),
                         )
                         await now_playing_hub.broadcast({"provider": "extension_bridge", **data})
-                elif msg_type == "autoplay_blocked":
+                elif msg_type in ("track_ended", "autoplay_blocked", "error", "bridge_log"):
                     await extension_bridge_hub.broadcast_to_frontends(raw)
+                elif msg_type == "resolved_mapping":
+                    tkey = raw.get("track_key")
+                    song_id = raw.get("apple_song_id")
+                    if tkey and song_id:
+                        with db_session() as conn:
+                            exists = conn.execute(
+                                "SELECT 1 FROM tracks_catalog WHERE track_key = ?", (tkey,)
+                            ).fetchone()
+                            if exists:
+                                conn.execute(
+                                    """
+                                    INSERT OR REPLACE INTO platform_track_mappings (
+                                        track_key, provider, external_id, url, resolved_at
+                                    ) VALUES (?, 'apple_music', ?, ?, ?)
+                                    """,
+                                    (
+                                        tkey,
+                                        str(song_id),
+                                        f"https://music.apple.com/song/{song_id}",
+                                        _utc_now_iso(),
+                                    ),
+                                )
             else:
                 # Frontend command -> forward to Extension MV3
                 delivered = await extension_bridge_hub.send_to_extensions(raw)

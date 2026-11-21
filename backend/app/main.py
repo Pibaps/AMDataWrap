@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import shutil
 import tempfile
@@ -22,7 +23,12 @@ from .analytics.detail import (
     get_history,
     get_sessions,
 )
-from .analytics.duckdb_engine import ensure_parquet_snapshot, export_parquet_snapshot, get_snapshot_status
+from .analytics.duckdb_engine import (
+    configure_duckdb_global_allocator,
+    ensure_parquet_snapshot,
+    export_parquet_snapshot,
+    get_snapshot_status,
+)
 from .analytics.galaxy import get_sonic_galaxy
 from .analytics.overview import (
     get_filter_options,
@@ -92,6 +98,12 @@ DEFAULT_ZIP_PATH = ROOT_DIR / "Apple Media Services information.zip"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    configure_duckdb_global_allocator()
+    app.state.proxy_http_client = httpx.AsyncClient(
+        timeout=8.0,
+        follow_redirects=True,
+        limits=httpx.Limits(max_connections=12, max_keepalive_connections=4),
+    )
     # Auto-ingest workspace ZIP if database has no data yet
     async with async_db_session() as conn:
         cur = await conn.execute("SELECT total_play_events FROM import_meta WHERE id = 1")
@@ -114,6 +126,9 @@ async def lifespan(app: FastAPI):
     await job_worker.stop()
     await smtc_worker.stop()
     await os_media_tracker.stop()
+    proxy_client = getattr(app.state, "proxy_http_client", None)
+    if proxy_client is not None:
+        await proxy_client.aclose()
 
 
 app = FastAPI(
@@ -266,6 +281,7 @@ async def enrichment_stream():
 # ---------------------------------------------------------------------------
 @app.get("/api/artwork-proxy")
 async def artwork_proxy(
+    request: Request,
     url: str = Query(...),
     w: int | None = Query(None, ge=64, le=2048),
     fmt: str | None = Query(None, description="webp | jpeg"),
@@ -283,27 +299,47 @@ async def artwork_proxy(
         or url.startswith("https://i.ytimg.com")
     ):
         raise HTTPException(status_code=400, detail="URL d'artwork non autorisée.")
+
+    norm_fmt = (fmt or "").lower()
+    etag_key = f"{url}|{w or ''}|{norm_fmt}".encode("utf-8")
+    etag = f'"{hashlib.blake2b(etag_key, digest_size=12).hexdigest()}"'
+    cache_headers = {
+        "Cache-Control": "public, max-age=604800, immutable",
+        "ETag": etag,
+        "Access-Control-Allow-Origin": "*",
+    }
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=cache_headers)
+
+    shared_client: httpx.AsyncClient | None = getattr(request.app.state, "proxy_http_client", None)
+    own_client = shared_client is None
+    client = shared_client or httpx.AsyncClient(
+        timeout=8.0,
+        follow_redirects=True,
+        limits=httpx.Limits(max_connections=12, max_keepalive_connections=4),
+    )
     try:
-        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
-            resp = await client.get(url)
-            if resp.status_code != 200:
-                raise HTTPException(status_code=404, detail="Artwork introuvable.")
-            raw_bytes = resp.content
-            media_type = resp.headers.get("content-type", "image/jpeg")
+        resp = await client.get(url)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=404, detail="Artwork introuvable.")
+        raw_bytes = resp.content
+        media_type = resp.headers.get("content-type", "image/jpeg")
 
-            if w is not None or (fmt and fmt.lower() in ("webp", "jpeg", "jpg")):
-                import io
-                from PIL import Image
+        if w is not None or norm_fmt in ("webp", "jpeg", "jpg"):
+            import io
+            from PIL import Image
 
-                def _transform(data: bytes) -> tuple[bytes, str]:
-                    im = Image.open(io.BytesIO(data))
+            def _transform(data: bytes) -> tuple[bytes, str]:
+                with Image.open(io.BytesIO(data)) as im:
+                    # Native libjpeg DCT downscale before full RGB decode (cuts Storage.c RAM peak)
+                    if w is not None and im.format in ("JPEG", "MPO"):
+                        im.draft("RGB", (w, w))
                     if im.mode not in ("RGB", "RGBA"):
                         im = im.convert("RGB")
                     if w is not None and (im.width > w or im.height > w):
                         im.thumbnail((w, w), Image.Resampling.LANCZOS)
                     out = io.BytesIO()
-                    target_fmt = (fmt or "").lower()
-                    if target_fmt == "webp":
+                    if norm_fmt == "webp":
                         im.save(out, format="WEBP", quality=82, method=4)
                         return out.getvalue(), "image/webp"
                     if im.mode == "RGBA":
@@ -311,17 +347,20 @@ async def artwork_proxy(
                     im.save(out, format="JPEG", quality=85, optimize=True)
                     return out.getvalue(), "image/jpeg"
 
-                raw_bytes, media_type = await asyncio.to_thread(_transform, raw_bytes)
+            raw_bytes, media_type = await asyncio.to_thread(_transform, raw_bytes)
 
-            return Response(
-                content=raw_bytes,
-                media_type=media_type,
-                headers={"Cache-Control": "public, max-age=86400", "Access-Control-Allow-Origin": "*"},
-            )
+        return Response(
+            content=raw_bytes,
+            media_type=media_type,
+            headers=cache_headers,
+        )
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        if own_client:
+            await client.aclose()
 
 
 @app.get("/api/audio-proxy")

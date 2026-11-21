@@ -401,40 +401,65 @@ async def fetch_itunes_fallback(
 # ---------------------------------------------------------------------------
 
 def _synthesize_sides_from_catalog(tracks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Build realistic Face A / Face B split when MusicBrainz vinyl pressing is not yet cached."""
+    """Build realistic Face A/B (1 LP) or Face A/B/C/D (2 LP Double Gatefold) split
+    when MusicBrainz vinyl pressing is not yet cached.
+
+    A standard 12" 33 RPM LP side holds ~22 min (~44 min per disc). Albums longer
+    than 44 min or with > 12 tracks are split into 2 discs (Faces A/B + C/D).
+    """
     if not tracks:
         return []
-    half = max(1, (len(tracks) + 1) // 2)
-    side_a_tracks = []
-    side_b_tracks = []
-    for idx, t in enumerate(tracks):
-        dur = int(t.get("duration_ms") or 200_000)
-        item = {
-            "number": f"A{idx + 1}" if idx < half else f"B{idx - half + 1}",
-            "title": t["song_name"],
-            "track_key": t["track_key"],
-            "duration_ms": dur,
-            "plays": int(t.get("plays") or 0),
-            "preview_url": t.get("preview_url"),
-        }
-        if idx < half:
-            side_a_tracks.append(item)
-        else:
-            side_b_tracks.append(item)
 
-    sides = [
-        {
-            "side": "A",
-            "total_duration_ms": sum(x["duration_ms"] for x in side_a_tracks),
-            "tracks": side_a_tracks,
-        }
-    ]
-    if side_b_tracks:
+    total_dur_ms = sum(int(t.get("duration_ms") or 200_000) for t in tracks)
+    is_double_lp = len(tracks) > 12 or (len(tracks) >= 8 and total_dur_ms > 44 * 60_000)
+    side_labels = ["A", "B", "C", "D"] if is_double_lp else ["A", "B"]
+    num_sides = min(len(side_labels), len(tracks))
+    target_per_side = max(1, total_dur_ms / num_sides)
+
+    buckets: list[list[dict[str, Any]]] = [[] for _ in range(num_sides)]
+    cur_side = 0
+    cur_dur = 0
+    for idx, t in enumerate(tracks):
+        remaining_tracks = len(tracks) - idx
+        remaining_sides = num_sides - cur_side - 1
+        dur = int(t.get("duration_ms") or 200_000)
+        # Advance side when current side is populated and either duration target is met
+        # or we must leave at least 1 track for each remaining side.
+        if (
+            cur_side < num_sides - 1
+            and buckets[cur_side]
+            and (
+                remaining_tracks <= remaining_sides
+                or (cur_dur + dur * 0.5 > target_per_side and remaining_tracks > remaining_sides)
+            )
+        ):
+            cur_side += 1
+            cur_dur = 0
+        buckets[cur_side].append(t)
+        cur_dur += dur
+
+    sides: list[dict[str, Any]] = []
+    for s_idx, bucket in enumerate(buckets):
+        if not bucket:
+            continue
+        label = side_labels[s_idx]
+        formatted = [
+            {
+                "number": f"{label}{i + 1}",
+                "title": t["song_name"],
+                "artist_name": t.get("artist_name"),
+                "track_key": t["track_key"],
+                "duration_ms": int(t.get("duration_ms") or 200_000),
+                "plays": int(t.get("plays") or 0),
+                "preview_url": t.get("preview_url"),
+            }
+            for i, t in enumerate(bucket)
+        ]
         sides.append(
             {
-                "side": "B",
-                "total_duration_ms": sum(x["duration_ms"] for x in side_b_tracks),
-                "tracks": side_b_tracks,
+                "side": label,
+                "total_duration_ms": sum(x["duration_ms"] for x in formatted),
+                "tracks": formatted,
             }
         )
     return sides
@@ -514,7 +539,7 @@ def api_get_vinyl_crate(
                     "label_name": r["ve_label"],
                     "catalog_number": r["ve_catalog"],
                     "country": r["ve_country"],
-                    "disc_count": int(r["ve_disc_count"] or 1),
+                    "disc_count": int(r["ve_disc_count"]) if r["ve_disc_count"] else (2 if int(r["track_count"] or 0) > 12 else 1),
                     "vinyl_color_hex": r["ve_color_hex"] or "#111114",
                     "has_real_pressing": bool(r["ve_label"] or r["ve_catalog"]),
                 }
@@ -578,6 +603,7 @@ def api_get_vinyl_detail(
                             )
                             if best_t and similarity_score(st.get("title", ""), best_t["song_name"]) >= 0.65:
                                 st["track_key"] = best_t["track_key"]
+                                st["artist_name"] = best_t.get("artist_name")
                                 st["plays"] = int(best_t["plays"] or 0)
                                 st["preview_url"] = best_t.get("preview_url")
                     sides = parsed_sides

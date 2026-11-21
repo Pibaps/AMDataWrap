@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "AMDataWrap V4 Bridge",
-  "version": "4.0.0",
-  "description": "Pilote tes vrais comptes Apple Music Web (MusicKit), Spotify Web et YouTube Music à 0 € depuis AMDataWrap V4.",
+  "version": "4.1.0",
+  "description": "Pilote tes vrais comptes Apple Music Web (MusicKit), Spotify Web, Deezer et YouTube Music à 0 € depuis AMDataWrap V4.1.",
   "permissions": [
     "tabs",
     "alarms",
@@ -10,7 +10,9 @@
   ],
   "host_permissions": [
     "https://music.apple.com/*",
+    "https://itunes.apple.com/*",
     "https://open.spotify.com/*",
+    "https://www.deezer.com/*",
     "https://music.youtube.com/*",
     "http://127.0.0.1:8000/*",
     "http://localhost:8000/*"
@@ -31,6 +33,11 @@
     {
       "matches": ["https://open.spotify.com/*"],
       "js": ["content-spotify.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.deezer.com/*"],
+      "js": ["content-deezer.js"],
       "run_at": "document_idle"
     },
     {
