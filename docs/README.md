@@ -3,8 +3,9 @@
 Ce dossier centralise les analyses de faisabilité, les plans d'évolution (V4.0 → V4.1), les prompts Deep Research et les rapports PDF de référence.
 
 ## 📂 `plans/` — Feuilles de Route & Suivi
-- **[PLAN_V4_5_V5_DRAFT.md](plans/PLAN_V4_5_V5_DRAFT.md)** *(Draft préparatoire V4.5 / V5.0 — en attente de `/grill-me`)*  
-  Analyse complète de la base V4.1, inventaire des capacités backend non exposées, dette technique et proposition multi-angles pour la prochaine génération (V4.5 locale complète vs V5.0 distribuable).
+- **[PLAN_V4_5_FINAL.md](plans/PLAN_V4_5_FINAL.md)** *(Spécification V4.5 validée via `/grill-me`)*  
+  Consolidation & bug-fix intégral (pochettes, refresh previews 30 s, audio/bridge, 5 importers), refactoring monolithes, plénitude UX (Mode Démo, FR/EN, Drawers, Filtres avancés, Paroles LRCLIB, Wrapped HD PNG, Sessions/Historique, Backup), pyramide de tests complète (`pytest` + `Vitest` + Playwright + CI) et préparation V5 (`docs/v5-prep/` : Comptes, Sécurité, Hosting 0 €, Écoute active par plateforme, Mobile Top-View).
+- **[PLAN_V4_5_V5_DRAFT.md](plans/PLAN_V4_5_V5_DRAFT.md)** *(Archive draft préparatoire avant `/grill-me`)*
 - **[PLAN_V4_1.md](plans/PLAN_V4_1.md)** *(Implémenté dans `frontend-v4.1/`, port `5177`)*  
   Optimisation extrême RAM/GPU (RAM ≤ 120 Mo, 1-draw-call `DataArrayTexture` + `InstancedMesh`, shaders GLSL analytiques, demand-driven 4 voies 0 Hz idle, AudioWorklet, DuckDB confiné 64 Mo, Pillow `draft()` + `ETag`), platine agrandie sans chevauchement, verrouillage capot fermé, retournement 3D + Double LP Gatefold, Bridge Deezer et simplification grand public.
 - **[PLAN_V4_FINAL.md](plans/PLAN_V4_FINAL.md)** *(Spécification V4.0 validée via `/grill-me`)*  

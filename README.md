@@ -8,14 +8,14 @@ L'interface principale actuelle est **V4.1 « Salon d'écoute » (`frontend-v4.1
 
 ## 1. Démarrage rapide & Services
 
-Double-cliquez sur **`start.bat`** (ou lancez **`.\start.ps1`** en PowerShell) pour démarrer le backend et le frontend principal **V4.1** :
+Double-cliquez sur **`start.bat`** (ou lancez **`.\start.ps1`** en PowerShell) pour démarrer le backend et **toutes les interfaces** (V1 à V4.1) :
 
 ```powershell
-# Démarrage standard (Backend :8000 + Frontend V4.1 :5177)
+# Démarrage complet (Backend :8000 + V1 :5173, V2 :5174, V3 :5175, V4.0 :5176, V4.1 :5177)
 .\start.ps1
 
-# Démarrer aussi les anciennes interfaces (V1 :5173, V2 :5174, V3 :5175, V4.0 :5176)
-.\start.ps1 -Legacy
+# Démarrer uniquement certaines versions (ex. V3 et V4.1)
+.\start.ps1 -Versions 3,4.1
 ```
 
 | Service | URL | Dossier | Rôle |
