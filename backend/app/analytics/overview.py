@@ -119,6 +119,7 @@ def get_filter_options(
                 """,
                 pe_params,
             )
+            if r[0] != "extension_bridge"
         ]
 
     return {

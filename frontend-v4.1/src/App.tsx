@@ -190,23 +190,23 @@ export const App: React.FC = () => {
       <PersistentStageCanvas />
 
       {/* Clean Minimal Top Header (Brand + 12 Tabs + Apple Music Year Filter) */}
-      <header className="sticky top-0 z-30 bg-bg-2/95 border-b border-line px-4 sm:px-7 py-2">
-        <div className="max-w-[1440px] mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-baseline gap-2.5 shrink-0">
+      <header className="sticky top-0 z-30 bg-bg-2/95 border-b border-line px-3 sm:px-5 py-2">
+        <div className="w-full mx-auto flex flex-nowrap items-center justify-between gap-2 overflow-x-auto">
+          <div className="flex items-baseline gap-2 shrink-0">
             <button
               onClick={() => setActiveTab("studio")}
               className="font-display text-lg font-[600] tracking-tight text-ink hover:text-amber transition-colors"
             >
               AMDataWrap
             </button>
-            <span className="kicker hidden sm:inline">
+            <span className="kicker hidden 2xl:inline whitespace-nowrap">
               {activePlatformBanner} · SALON 3D
             </span>
           </div>
 
           <nav
             aria-label="Navigation AMDataWrap V4"
-            className="flex items-center gap-1 overflow-x-auto max-w-full py-0.5"
+            className="flex items-center gap-0.5 shrink-0 py-0.5"
           >
             {NAV_TAB_IDS.map((id) => {
               const active = activeTab === id;
@@ -215,7 +215,7 @@ export const App: React.FC = () => {
                   key={id}
                   onClick={() => setActiveTab(id)}
                   data-testid={`nav-${id}`}
-                  className={`px-2.5 py-1 rounded text-xs font-medium whitespace-nowrap transition-colors ${
+                  className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap transition-colors ${
                     active
                       ? "bg-amber text-[#1a0f07] font-semibold"
                       : "text-ink-2 hover:text-ink hover:bg-bg-3"
@@ -227,7 +227,7 @@ export const App: React.FC = () => {
             })}
           </nav>
 
-          <div className="flex flex-wrap items-center gap-1.5 text-xs shrink-0">
+          <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
             <EnrichmentPill hasData={hasData} />
             {availablePlatforms.length > 1 && (
               <div

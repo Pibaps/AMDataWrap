@@ -633,7 +633,7 @@ export const HybridPlaybackDeck: React.FC = () => {
       }
 
       const sig = `${nowPlaying.song_name}::${nowPlaying.artist_name}`;
-      if (pos >= 30_000 && pos >= dur * 0.5 && scrobbledSigRef.current !== sig) {
+      if (nowPlaying.source !== "bridge" && pos >= 30_000 && pos >= dur * 0.5 && scrobbledSigRef.current !== sig) {
         scrobbledSigRef.current = sig;
         apiPost(API.scrobble, {
           song_name: nowPlaying.song_name,
@@ -641,12 +641,7 @@ export const HybridPlaybackDeck: React.FC = () => {
           album_name: nowPlaying.album_name,
           play_duration_ms: Math.round(pos),
           media_duration_ms: Math.round(dur),
-          provider:
-            nowPlaying.source === "youtube"
-              ? "youtube_iframe"
-              : nowPlaying.source === "bridge"
-              ? "extension_bridge"
-              : "preview_audio",
+          provider: nowPlaying.source === "youtube" ? "youtube_iframe" : "preview_audio",
           video_id: nowPlaying.video_id || undefined,
           artwork_url: nowPlaying.artwork_url || undefined,
           event_type: "scrobble",

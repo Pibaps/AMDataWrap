@@ -653,8 +653,8 @@ def get_profile_capabilities(
             """,
             params,
         ).fetchall()
-        source_providers = sorted(r["sp"] for r in sp_rows if r["sp"])
-        platforms = sorted({canonical_platform_for(sp) for sp in source_providers})
+        source_providers = sorted(r["sp"] for r in sp_rows if r["sp"] and r["sp"] != "extension_bridge")
+        platforms = sorted({canonical_platform_for(sp) for sp in source_providers if canonical_platform_for(sp) != "extension_bridge"})
 
         # Query 2: single-pass aggregate over play_events
         skip_ph = ", ".join("?" for _ in _SKIP_CAPABLE_PROVIDERS)
