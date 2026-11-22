@@ -119,7 +119,7 @@ def get_filter_options(
                 """,
                 pe_params,
             )
-            if r[0] != "extension_bridge"
+            if r[0] not in ("extension_bridge", "preview_audio", "youtube_iframe")
         ]
 
     return {

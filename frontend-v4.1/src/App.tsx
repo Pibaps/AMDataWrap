@@ -125,7 +125,8 @@ export const App: React.FC = () => {
       .catch(() => {});
   }, [filters.profile_id, filters.source_provider]);
 
-  const availablePlatforms = (capabilities?.platforms ?? []).filter((p) => p !== "extension_bridge");
+  const HIDDEN_HEADER_PLATFORMS = new Set(["extension_bridge", "preview_audio", "youtube_iframe"]);
+  const availablePlatforms = (capabilities?.platforms ?? []).filter((p) => !HIDDEN_HEADER_PLATFORMS.has(p));
   const selectedPlatforms =
     !filters.source_provider || filters.source_provider === "all"
       ? availablePlatforms
@@ -189,9 +190,9 @@ export const App: React.FC = () => {
       {/* SINGLE PERSISTENT 3D LISTENING ROOM CANVAS (pauses RAF automatically off studio tab) */}
       <PersistentStageCanvas />
 
-      {/* Clean Minimal Top Header (Brand + 12 Tabs + Apple Music Year Filter) */}
-      <header className="sticky top-0 z-30 bg-bg-2/95 border-b border-line px-3 sm:px-5 py-2">
-        <div className="w-full mx-auto flex flex-nowrap items-center justify-between gap-2 overflow-x-auto">
+      {/* Clean Minimal Top Header (Brand + 12 Tabs + Controls) */}
+      <header className="sticky top-0 z-30 bg-bg-2/95 border-b border-line px-4 sm:px-6 lg:px-10 py-2">
+        <div className="max-w-[1680px] mx-auto flex flex-wrap xl:flex-nowrap items-center justify-between gap-x-3 gap-y-1.5">
           <div className="flex items-baseline gap-2 shrink-0">
             <button
               onClick={() => setActiveTab("studio")}
@@ -206,7 +207,7 @@ export const App: React.FC = () => {
 
           <nav
             aria-label="Navigation AMDataWrap V4"
-            className="flex items-center gap-0.5 shrink-0 py-0.5"
+            className="order-3 xl:order-none w-full xl:w-auto flex items-center gap-0.5 overflow-x-auto py-0.5"
           >
             {NAV_TAB_IDS.map((id) => {
               const active = activeTab === id;
@@ -227,7 +228,7 @@ export const App: React.FC = () => {
             })}
           </nav>
 
-          <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 text-xs shrink-0">
             <EnrichmentPill hasData={hasData} />
             {availablePlatforms.length > 1 && (
               <div

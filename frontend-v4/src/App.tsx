@@ -94,7 +94,8 @@ export const App: React.FC = () => {
       .catch(() => {});
   }, [filters.source_provider]);
 
-  const availablePlatforms = (capabilities?.platforms ?? []).filter((p) => p !== "extension_bridge");
+  const HIDDEN_HEADER_PLATFORMS = new Set(["extension_bridge", "preview_audio", "youtube_iframe"]);
+  const availablePlatforms = (capabilities?.platforms ?? []).filter((p) => !HIDDEN_HEADER_PLATFORMS.has(p));
   const selectedPlatforms =
     !filters.source_provider || filters.source_provider === "all"
       ? availablePlatforms
