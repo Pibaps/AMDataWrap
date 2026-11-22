@@ -27,6 +27,7 @@ from ..analytics.overview import (
     get_top_tracks,
 )
 from ..analytics.persona import get_persona_and_eras
+from ..analytics.iceberg_games import search_suggestions
 from ..analytics.v3_science import (
     build_smart_playlist,
     format_playlist_export,
@@ -176,8 +177,34 @@ def history_export_endpoint(
 
 
 @analytics_router.get("/api/v3/search", response_model=FtsSearchOut)
-def v3_fts5_search(q: str = Query("", max_length=200), limit: int = Query(25, ge=1, le=100)):
-    return fts5_search(q, limit=limit)
+def v3_fts5_search(
+    q: str = Query("", max_length=200),
+    limit: int = Query(25, ge=1, le=100),
+    scope: str = Query("all", description="all | tracks | artists | albums | lyrics"),
+    genre: str | None = Query(None),
+    year_from: int | None = Query(None),
+    year_to: int | None = Query(None),
+    min_plays: int = Query(0, ge=0),
+    sort: str = Query("relevance", description="relevance | plays | duration"),
+):
+    return fts5_search(
+        q,
+        limit=limit,
+        scope=scope,
+        genre=genre,
+        year_from=year_from,
+        year_to=year_to,
+        min_plays=min_plays,
+        sort=sort,
+    )
+
+
+@analytics_router.get("/api/v3/search/suggest")
+def v3_search_suggest(
+    q: str = Query("", max_length=100),
+    limit: int = Query(8, ge=1, le=20),
+):
+    return search_suggestions(q, limit=limit)
 
 
 @analytics_router.get("/api/v3/analytics/eras")

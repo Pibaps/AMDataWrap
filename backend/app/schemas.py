@@ -119,6 +119,7 @@ class SearchResultItem(BaseModel):
     total_ms: int = 0
     match_source: str = "fts5_unicode61"
     snippet: str | None = None
+    score: float = 0.0
 
 
 class FtsSearchOut(BaseModel):
@@ -126,3 +127,7 @@ class FtsSearchOut(BaseModel):
     total: int
     tracks: list[SearchResultItem]
     lyrics_matches: list[dict[str, Any]]
+    artists: list[dict[str, Any]] = Field(default_factory=list)
+    albums: list[dict[str, Any]] = Field(default_factory=list)
+    did_you_mean: str | None = None
+    facets: dict[str, Any] = Field(default_factory=dict)
