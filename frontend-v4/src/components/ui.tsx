@@ -70,14 +70,55 @@ export const Cover: React.FC<{ url?: string | null; alt?: string; size?: number;
   className = "",
   rounded = false,
 }) => {
-  const src = coverUrl(url, size <= 64 ? 120 : size <= 160 ? 300 : 600);
+  const proxySrc = coverUrl(url, size <= 64 ? 120 : size <= 160 ? 300 : 600);
+  const directSrc = React.useMemo(() => {
+    if (!url) return null;
+    let u = url.trim();
+    if (u.startsWith("//")) u = `https:${u}`;
+    if (u.startsWith("http://")) u = `https://${u.slice(7)}`;
+    return u.startsWith("https://") ? u : null;
+  }, [url]);
+
+  const [stage, setStage] = React.useState<"proxy" | "retry" | "direct" | "failed">("proxy");
+  React.useEffect(() => {
+    setStage("proxy");
+  }, [url]);
+
+  const activeSrc =
+    stage === "proxy"
+      ? proxySrc
+      : stage === "retry"
+        ? proxySrc
+          ? `${proxySrc}&_r=1`
+          : null
+        : stage === "direct"
+          ? directSrc
+          : null;
+
+  const handleError = React.useCallback(() => {
+    if (stage === "proxy") {
+      window.setTimeout(() => setStage("retry"), 500);
+    } else if (stage === "retry" && directSrc && directSrc !== proxySrc) {
+      setStage("direct");
+    } else {
+      setStage("failed");
+    }
+  }, [stage, directSrc, proxySrc]);
+
   return (
     <div
       className={`shrink-0 overflow-hidden bg-bg-4 ${rounded ? "rounded-full" : "rounded-[3px]"} ${className}`}
       style={{ width: size, height: size }}
     >
-      {src ? (
-        <img src={src} alt={alt} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+      {activeSrc ? (
+        <img
+          src={activeSrc}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          onError={handleError}
+          className="w-full h-full object-cover"
+        />
       ) : (
         <div className="w-full h-full flex items-center justify-center text-ink-3">
           <Disc3 style={{ width: size * 0.45, height: size * 0.45 }} />

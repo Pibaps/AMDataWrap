@@ -17,7 +17,7 @@ from ..security import safe_fetch_bytes, validate_proxy_url
 
 proxy_router = APIRouter(tags=["proxy"])
 
-_MAX_DISK_CACHE_FILES = 500
+_MAX_DISK_CACHE_FILES = 2000
 
 
 def _cache_paths(cache_dir: Path, digest: str) -> tuple[Path, Path]:
@@ -89,9 +89,9 @@ async def artwork_proxy(
     shared_client: httpx.AsyncClient | None = getattr(request.app.state, "proxy_http_client", None)
     own_client = shared_client is None
     client = shared_client or httpx.AsyncClient(
-        timeout=settings.proxy_timeout_sec,
+        timeout=httpx.Timeout(settings.proxy_timeout_sec, pool=20.0),
         follow_redirects=False,
-        limits=httpx.Limits(max_connections=12, max_keepalive_connections=4),
+        limits=httpx.Limits(max_connections=32, max_keepalive_connections=12),
     )
     try:
         raw_bytes, media_type = await safe_fetch_bytes(

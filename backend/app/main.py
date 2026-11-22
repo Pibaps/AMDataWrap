@@ -36,9 +36,9 @@ async def lifespan(app: FastAPI):
     init_db()
     configure_duckdb_global_allocator()
     app.state.proxy_http_client = httpx.AsyncClient(
-        timeout=settings.proxy_timeout_sec,
+        timeout=httpx.Timeout(settings.proxy_timeout_sec, pool=20.0),
         follow_redirects=False,
-        limits=httpx.Limits(max_connections=12, max_keepalive_connections=4),
+        limits=httpx.Limits(max_connections=32, max_keepalive_connections=12),
     )
     async with async_db_session() as conn:
         cur = await conn.execute("SELECT total_play_events FROM import_meta WHERE id = 1")
