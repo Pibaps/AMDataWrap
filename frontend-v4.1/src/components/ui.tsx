@@ -88,29 +88,59 @@ export const Cover: React.FC<{ url?: string | null; alt?: string; size?: number;
   className = "",
   rounded = false,
 }) => {
-  const src = coverUrl(url, size <= 64 ? 120 : size <= 160 ? 300 : 600);
+  const proxySrc = coverUrl(url, size <= 64 ? 120 : size <= 160 ? 300 : 600);
+  const directSrc = React.useMemo(() => {
+    if (!url) return null;
+    let u = url.trim();
+    if (u.startsWith("//")) u = `https:${u}`;
+    if (u.startsWith("http://")) u = `https://${u.slice(7)}`;
+    return u.startsWith("https://") ? u : null;
+  }, [url]);
+
   const [failed, setFailed] = React.useState(false);
-  const [loaded, setLoaded] = React.useState(false);
+  const [useDirect, setUseDirect] = React.useState(false);
+  const retryTimerRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
     setFailed(false);
-    setLoaded(false);
-  }, [src]);
+    setUseDirect(false);
+    return () => {
+      if (retryTimerRef.current !== null) {
+        window.clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+    };
+  }, [proxySrc]);
+
+  const activeSrc = useDirect ? directSrc : proxySrc;
+
+  const handleError = React.useCallback(() => {
+    setFailed(true);
+    if (!useDirect && directSrc && directSrc !== proxySrc) {
+      retryTimerRef.current = window.setTimeout(() => {
+        retryTimerRef.current = null;
+        setUseDirect(true);
+        setFailed(false);
+      }, 350);
+    }
+  }, [useDirect, directSrc, proxySrc]);
 
   return (
     <div
       className={`shrink-0 overflow-hidden bg-bg-4 ${rounded ? "rounded-full" : "rounded-[3px]"} ${className}`}
       style={{ width: size, height: size }}
     >
-      {src && !failed ? (
+      {activeSrc && !failed ? (
         <img
-          src={src}
+          src={activeSrc}
           alt={alt}
-          loading="lazy"
           decoding="async"
-          onLoad={() => setLoaded(true)}
-          onError={() => setFailed(true)}
-          className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+          onError={handleError}
+          className="w-full h-full object-cover"
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center text-ink-3">

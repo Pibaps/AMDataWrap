@@ -8,7 +8,7 @@
  * - Next / Prev vinyl track navigation (`nextVinylTrack`, `prevVinylTrack`)
  */
 
-import { API, apiGet } from "../api/client";
+import { API, apiGet, buildQueryParams, type VinylDetail } from "../api/client";
 import { useV4Store, type ActiveTrack } from "../store/useV4Store";
 import { playbackClock } from "./playbackClock";
 import { vinylFoley } from "./vinylFoley";
@@ -26,6 +26,9 @@ export interface PlayRequest {
 
 interface ResolveOut {
   ok: boolean;
+  track_key?: string;
+  album_key?: string | null;
+  duration_ms?: number | null;
   video_id: string | null;
   preview_url: string | null;
   artwork_url: string | null;
@@ -34,10 +37,73 @@ interface ResolveOut {
 interface AppleHintsOut {
   ok: boolean;
   track_key: string;
+  album_key?: string | null;
   apple_song_id: string | null;
   isrcs: string[];
   artist_name?: string;
   album_name?: string;
+}
+
+function extractAlbumKeyFromTrackKey(trackKey?: string | null): string | null {
+  if (!trackKey || !trackKey.includes("||")) return null;
+  const parts = trackKey.split("||");
+  return parts[1]?.trim() || null;
+}
+
+function findTrackPositionInVinyl(
+  detail: VinylDetail,
+  trackKey: string | undefined,
+  songName: string
+): { sideIndex: number; trackIndex: number } {
+  const normSong = songName.trim().toLowerCase();
+  if (trackKey) {
+    for (let s = 0; s < detail.sides.length; s++) {
+      const tracks = detail.sides[s]?.tracks || [];
+      const idx = tracks.findIndex((t) => t.track_key === trackKey);
+      if (idx >= 0) return { sideIndex: s, trackIndex: idx };
+    }
+  }
+  for (let s = 0; s < detail.sides.length; s++) {
+    const tracks = detail.sides[s]?.tracks || [];
+    const idx = tracks.findIndex((t) => t.title.trim().toLowerCase() === normSong);
+    if (idx >= 0) return { sideIndex: s, trackIndex: idx };
+  }
+  return { sideIndex: 0, trackIndex: 0 };
+}
+
+async function syncPlatterForTrack(
+  albumKey: string | null | undefined,
+  trackKey: string | undefined,
+  songName: string,
+  seq: number
+): Promise<ActiveTrack["vinyl"]> {
+  const effAlbumKey = albumKey || extractAlbumKeyFromTrackKey(trackKey);
+  if (!effAlbumKey) return null;
+
+  const st = useV4Store.getState();
+  let detail = st.onPlatter?.album_key === effAlbumKey ? st.onPlatter : null;
+  if (!detail) {
+    try {
+      const qs = buildQueryParams(st.filters);
+      detail = await apiGet<VinylDetail>(`${API.vinyl(effAlbumKey)}${qs}`);
+    } catch {
+      return null;
+    }
+    if (seq !== requestSeq) return null;
+  }
+
+  const { sideIndex, trackIndex } = findTrackPositionInVinyl(detail, trackKey, songName);
+  const latest = useV4Store.getState();
+  if (latest.onPlatter?.album_key !== detail.album_key) {
+    latest.setOnPlatter(detail);
+  }
+  if (latest.activeSideIndex !== sideIndex) {
+    latest.setActiveSideIndex(sideIndex);
+  }
+  if (latest.vinylStage === "INSPECT") {
+    latest.setVinylStage("ROOM");
+  }
+  return { album_key: detail.album_key, sideIndex, trackIndex };
 }
 
 const appleHintsCache = new Map<string, Promise<AppleHintsOut>>();
@@ -124,6 +190,12 @@ export async function playTrack(req: PlayRequest): Promise<void> {
     st.setPowerOn(true);
   }
 
+  // Start syncing the 3D turntable platter immediately if track_key already encodes album_key ("song||album_key")
+  const earlyVinylPromise: Promise<ActiveTrack["vinyl"]> =
+    !req.vinyl && extractAlbumKeyFromTrackKey(req.track_key)
+      ? syncPlatterForTrack(null, req.track_key, req.song_name, seq)
+      : Promise.resolve(req.vinyl ?? null);
+
   // Open-Tab Bridge mode (Apple Music / Spotify / Deezer at 0 EUR, 0 Mo YouTube RAM)
   if (st.preferredSource === "bridge") {
     lastBridgePlayAt = Date.now();
@@ -144,8 +216,20 @@ export async function playTrack(req: PlayRequest): Promise<void> {
     st.setIsPlaying(true);
     st.setMotorOn(true);
 
-    const hints = await fetchAppleHints(req);
+    const [hints, earlyVinyl] = await Promise.all([fetchAppleHints(req), earlyVinylPromise]);
     if (seq !== requestSeq) return;
+
+    const bridgeTrackKey = hints.track_key || req.track_key;
+    const bridgeVinyl =
+      earlyVinyl ||
+      (!req.vinyl ? await syncPlatterForTrack(hints.album_key, bridgeTrackKey, req.song_name, seq) : null);
+    if (seq !== requestSeq) return;
+    if (bridgeVinyl) {
+      const curNow = useV4Store.getState().nowPlaying;
+      if (curNow) {
+        useV4Store.getState().setNowPlaying({ ...curNow, track_key: bridgeTrackKey, vinyl: bridgeVinyl });
+      }
+    }
 
     const sent = sendBridgeCommand("play_track", {
       song_name: req.song_name,
@@ -186,8 +270,16 @@ export async function playTrack(req: PlayRequest): Promise<void> {
     st.setIsPlaying(false);
   }
 
-  const res = await resolveTrack(req);
+  const [res, earlyVinyl] = await Promise.all([resolveTrack(req), earlyVinylPromise]);
   if (seq !== requestSeq) return; // superseded
+
+  const resolvedTrackKey = res.track_key || req.track_key;
+  const resolvedDuration = req.duration_ms && req.duration_ms > 0 ? req.duration_ms : Number(res.duration_ms || 0) || duration;
+  let vinylCtx: ActiveTrack["vinyl"] = earlyVinyl ?? null;
+  if (!vinylCtx) {
+    vinylCtx = await syncPlatterForTrack(res.album_key, resolvedTrackKey, req.song_name, seq);
+    if (seq !== requestSeq) return;
+  }
 
   const preview = res.preview_url || req.preview_url || null;
   const wantYt = useV4Store.getState().preferredSource === "youtube";
@@ -196,17 +288,19 @@ export async function playTrack(req: PlayRequest): Promise<void> {
     useV4Store.getState().setPlaybackError("Aucune source audio trouvée pour ce titre.");
     return;
   }
+  const finalDuration = useYt ? resolvedDuration : 30_000;
+  playbackClock.reset(finalDuration);
   useV4Store.getState().setNowPlaying({
     song_name: req.song_name,
     artist_name: req.artist_name,
     album_name: req.album_name || "",
     artwork_url: req.artwork_url || res.artwork_url || null,
-    track_key: req.track_key,
+    track_key: resolvedTrackKey,
     video_id: res.video_id,
     preview_url: preview,
-    duration_ms: useYt ? duration : 30_000,
+    duration_ms: finalDuration,
     source: useYt ? "youtube" : "preview",
-    vinyl: req.vinyl ?? null,
+    vinyl: vinylCtx,
   });
   useV4Store.getState().setIsPlaying(true);
   useV4Store.getState().setMotorOn(true);

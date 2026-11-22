@@ -52,18 +52,27 @@ function findTrackPositionInVinyl(
   return { sideIndex: 0, trackIndex: 0 };
 }
 
+function extractAlbumKeyFromTrackKey(trackKey?: string | null): string | null {
+  if (!trackKey || !trackKey.includes("||")) return null;
+  const parts = trackKey.split("||");
+  return parts[1]?.trim() || null;
+}
+
 async function syncPlatterForTrack(
-  albumKey: string,
+  albumKey: string | null | undefined,
   trackKey: string | undefined,
   songName: string,
   seq: number
 ): Promise<ActiveTrack["vinyl"]> {
+  const effAlbumKey = albumKey || extractAlbumKeyFromTrackKey(trackKey);
+  if (!effAlbumKey) return null;
+
   const st = useV4Store.getState();
-  let detail = st.onPlatter?.album_key === albumKey ? st.onPlatter : null;
+  let detail = st.onPlatter?.album_key === effAlbumKey ? st.onPlatter : null;
   if (!detail) {
     try {
       const qs = buildQueryParams(st.filters);
-      detail = await apiGet<VinylDetail>(`${API.vinyl(albumKey)}${qs}`);
+      detail = await apiGet<VinylDetail>(`${API.vinyl(effAlbumKey)}${qs}`);
     } catch {
       return null;
     }
@@ -121,13 +130,19 @@ export async function playTrack(req: PlayRequest): Promise<void> {
   });
   st.setIsPlaying(false);
 
-  const res = await resolveTrack(req);
+  // Start syncing the 3D turntable platter immediately if track_key already encodes album_key ("song||album_key")
+  const earlyVinylPromise: Promise<ActiveTrack["vinyl"]> =
+    !req.vinyl && extractAlbumKeyFromTrackKey(req.track_key)
+      ? syncPlatterForTrack(null, req.track_key, req.song_name, seq)
+      : Promise.resolve(req.vinyl ?? null);
+
+  const [res, earlyVinyl] = await Promise.all([resolveTrack(req), earlyVinylPromise]);
   if (seq !== requestSeq) return; // superseded by a newer request
 
   const resolvedTrackKey = res.track_key || req.track_key;
   const resolvedDuration = duration > 0 ? duration : Number(res.duration_ms || 0);
-  let vinylCtx: ActiveTrack["vinyl"] = req.vinyl ?? null;
-  if (!vinylCtx && res.album_key) {
+  let vinylCtx: ActiveTrack["vinyl"] = earlyVinyl ?? null;
+  if (!vinylCtx) {
     vinylCtx = await syncPlatterForTrack(res.album_key, resolvedTrackKey, req.song_name, seq);
     if (seq !== requestSeq) return;
   }

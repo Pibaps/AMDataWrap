@@ -452,11 +452,38 @@ async def api_playback_apple_hints(
         ).fetchall()
         isrcs = [str(r["isrc"]).strip().upper() for r in isrc_rows if r["isrc"]]
 
+        album_key: str | None = None
         t_row = conn.execute(
-            "SELECT artist_name, album_name FROM tracks_catalog WHERE track_key = ?",
+            "SELECT track_key, album_group_key, artist_name, album_name FROM tracks_catalog WHERE track_key = ?",
             (tkey,),
         ).fetchone()
+        if not t_row:
+            if effective_artist:
+                t_row = conn.execute(
+                    """
+                    SELECT track_key, album_group_key, artist_name, album_name
+                    FROM tracks_catalog
+                    WHERE LOWER(song_name) = LOWER(?) AND LOWER(COALESCE(artist_name, '')) = LOWER(?)
+                    ORDER BY total_plays DESC
+                    LIMIT 1
+                    """,
+                    (song, effective_artist),
+                ).fetchone()
+            if not t_row:
+                t_row = conn.execute(
+                    """
+                    SELECT track_key, album_group_key, artist_name, album_name
+                    FROM tracks_catalog
+                    WHERE LOWER(song_name) = LOWER(?)
+                    ORDER BY total_plays DESC
+                    LIMIT 1
+                    """,
+                    (song,),
+                ).fetchone()
+            if t_row:
+                tkey = t_row["track_key"]
         if t_row:
+            album_key = t_row["album_group_key"]
             if not effective_artist and t_row["artist_name"]:
                 effective_artist = t_row["artist_name"]
             if not effective_album and t_row["album_name"]:
@@ -482,6 +509,7 @@ async def api_playback_apple_hints(
     return {
         "ok": True,
         "track_key": tkey,
+        "album_key": album_key,
         "apple_song_id": cached_song_id,
         "isrcs": isrcs[:10],
         "artist_name": effective_artist,
