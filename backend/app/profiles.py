@@ -48,6 +48,7 @@ V4_PROVIDER_PRIORITY: dict[str, int] = {
     **PROVIDER_PRIORITY,
     "spotify_extended": 95,
     "spotify_rgpd": 95,
+    "spotify_technical_log": 92,
     "spotify_account": 90,
     "deezer_rgpd": 85,
     "deezer": 85,
@@ -71,6 +72,7 @@ _SKIP_CAPABLE_PROVIDERS: tuple[str, ...] = (
     "apple_rgpd_zip",
     "apple_music",
     "spotify_extended",
+    "spotify_technical_log",
     "spotify_account",
     "spotify_rgpd",
     "spotify",
@@ -98,6 +100,7 @@ _NO_NATIVE_END_REASON_PROVIDERS: tuple[str, ...] = (
 
 _INCOGNITO_PROVIDERS: tuple[str, ...] = (
     "spotify_extended",
+    "spotify_technical_log",
     "spotify_rgpd",
 )
 

@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo } from "react";
-import { API, apiGet, buildQueryParams, formatDateFr, formatHours, formatInt, type VinylDetail } from "../../api/client";
+import { API, apiGet, buildQueryParams, formatDateFr, formatHours, formatInt, formatMinutes, getActiveTimeUnit, type VinylDetail } from "../../api/client";
 import { playTrack } from "../../audio/playTrack";
 import { BarList, Cover, Empty, ErrorNote, Loading, Page, PlayButton, Section, Stat } from "../../components/ui";
 import { useApi, withQs } from "../../hooks/useApi";
@@ -54,8 +54,12 @@ export const OverviewPage: React.FC = () => {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6">
           <Stat
             label="Temps cumulé"
-            value={`${formatInt(kpis.total_hours)} h`}
-            sub={`${kpis.total_days} jours équivalents`}
+            value={formatHours(kpis.total_ms || (kpis.total_hours || 0) * 3_600_000)}
+            sub={
+              getActiveTimeUnit() === "minutes"
+                ? `${formatInt(kpis.total_hours)} h · ${kpis.total_days} jours`
+                : `${formatMinutes(kpis.total_ms || (kpis.total_hours || 0) * 3_600_000)} · ${kpis.total_days} jours`
+            }
             accent
           />
           <Stat

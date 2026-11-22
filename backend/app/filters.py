@@ -6,7 +6,7 @@ from fastapi import Query
 SOURCE_PROVIDER_ALIASES: dict[str, tuple[str, ...]] = {
     "apple_music": ("apple_rgpd_zip", "apple_music", "musickit_web"),
     "apple": ("apple_rgpd_zip", "apple_music", "musickit_web"),
-    "spotify": ("spotify_extended", "spotify_account", "spotify_rgpd", "spotify_web", "spotify"),
+    "spotify": ("spotify_extended", "spotify_technical_log", "spotify_account", "spotify_rgpd", "spotify_web", "spotify"),
     "youtube_music": ("youtube_takeout", "youtube_music", "youtube_iframe", "youtube_web"),
     "youtube": ("youtube_takeout", "youtube_music", "youtube_iframe", "youtube_web"),
     "deezer": ("deezer_rgpd", "deezer"),
@@ -30,6 +30,7 @@ PROVIDER_TO_PLATFORM: dict[str, str] = {
     "apple": "apple_music",
     "musickit_web": "apple_music",
     "spotify_extended": "spotify",
+    "spotify_technical_log": "spotify",
     "spotify_account": "spotify",
     "spotify_rgpd": "spotify",
     "spotify_web": "spotify",

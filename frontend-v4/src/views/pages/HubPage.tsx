@@ -26,6 +26,7 @@ export const HubPage: React.FC<HubPageProps> = ({ onRefreshProfiles }) => {
   const [targetProfileName, setTargetProfileName] = useState("");
   const [includeIncognito, setIncludeIncognito] = useState(true);
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [importProgress, setImportProgress] = useState<{ percent: number; detail: string; status: "running" | "done" | "error" } | null>(null);
   const [uploading, setUploading] = useState(false);
 
   // Assisted CSV mapping (e.g. atypical TIDAL CSV)
@@ -67,11 +68,26 @@ export const HubPage: React.FC<HubPageProps> = ({ onRefreshProfiles }) => {
     }
 
     setUploading(true);
-    setImportStatus("Import de l'archive en cours…");
+    setImportStatus(null);
+    const importId =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `imp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    setImportProgress({ percent: 2, detail: `Envoi de ${file.name}…`, status: "running" });
+
+    let pollTimer: number | null = null;
+    const stopPolling = () => {
+      if (pollTimer !== null) {
+        window.clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
+
     try {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("platform", selectedPlatform);
+      fd.append("import_id", importId);
       if (targetProfileName.trim()) {
         fd.append("profile_name", targetProfileName.trim());
       } else if (activeProfileId) {
@@ -81,24 +97,85 @@ export const HubPage: React.FC<HubPageProps> = ({ onRefreshProfiles }) => {
       if (customMapping) {
         fd.append("column_mapping_json", JSON.stringify(customMapping));
       }
-      const resp = await fetch(API.importV4, { method: "POST", body: fd });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setImportStatus(`Erreur : ${data.message || data.detail || resp.statusText}`);
+
+      const startBackendPoll = () => {
+        if (pollTimer !== null) return;
+        pollTimer = window.setInterval(async () => {
+          try {
+            const p = await apiGet<{ percent?: number; detail?: string; status?: string }>(API.importProgress(importId));
+            if (p && typeof p.percent === "number") {
+              const mapped = Math.min(99, 15 + Math.round(p.percent * 0.85));
+              setImportProgress((prev) => ({
+                percent: Math.max(prev?.percent ?? 15, mapped),
+                detail: p.detail || prev?.detail || "Traitement de l'archive…",
+                status: "running",
+              }));
+            }
+          } catch {
+            /* ignore transient poll error */
+          }
+        }, 250);
+      };
+
+      const { ok, statusText, data } = await new Promise<{ ok: boolean; statusText: string; data: any }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", API.importV4);
+        xhr.upload.onprogress = (ev) => {
+          if (ev.lengthComputable && ev.total > 0) {
+            const upPct = Math.round((ev.loaded / ev.total) * 100);
+            const mapped = Math.max(2, Math.round(upPct * 0.15));
+            setImportProgress({
+              percent: mapped,
+              detail: upPct < 100 ? `Envoi de ${file.name} (${upPct} %)…` : "Archive reçue, analyse en cours…",
+              status: "running",
+            });
+            if (upPct >= 100) startBackendPoll();
+          }
+        };
+        xhr.upload.onload = () => {
+          setImportProgress((prev) => ({
+            percent: Math.max(prev?.percent ?? 15, 15),
+            detail: "Archive reçue, analyse en cours…",
+            status: "running",
+          }));
+          startBackendPoll();
+        };
+        xhr.onload = () => {
+          let parsed: any = {};
+          try {
+            parsed = JSON.parse(xhr.responseText || "{}");
+          } catch {
+            parsed = { detail: xhr.responseText };
+          }
+          resolve({ ok: xhr.status >= 200 && xhr.status < 300, statusText: xhr.statusText, data: parsed });
+        };
+        xhr.onerror = () => reject(new Error("Connexion interrompue pendant l'envoi."));
+        xhr.send(fd);
+      });
+
+      stopPolling();
+      if (!ok) {
+        const msg = `Erreur : ${data.message || data.detail || statusText}`;
+        setImportStatus(msg);
+        setImportProgress({ percent: 100, detail: msg, status: "error" });
       } else {
-        setImportStatus(
-          `${data.detected_platform} importé : ${formatInt(data.inserted_events)} écoutes ajoutées (${formatInt(
-            data.skipped_duplicates
-          )} doublons ignorés).`
-        );
+        const msg = `${data.detected_platform} importé : ${formatInt(data.inserted_events)} écoutes ajoutées (${formatInt(
+          data.skipped_duplicates
+        )} doublons ignorés).`;
+        setImportStatus(msg);
+        setImportProgress({ percent: 100, detail: msg, status: "done" });
         setCsvFile(null);
         setCsvPreview(null);
         invalidateApiCache();
         await onRefreshProfiles();
       }
     } catch (err: any) {
-      setImportStatus(`Erreur réseau : ${err.message}`);
+      stopPolling();
+      const msg = `Erreur réseau : ${err.message}`;
+      setImportStatus(msg);
+      setImportProgress({ percent: 100, detail: msg, status: "error" });
     } finally {
+      stopPolling();
       setUploading(false);
     }
   };
@@ -175,7 +252,7 @@ export const HubPage: React.FC<HubPageProps> = ({ onRefreshProfiles }) => {
         >
           <input
             type="file"
-            accept=".zip,.json,.xlsx,.csv"
+            accept=".zip,.json,.html,.htm,.xlsx,.csv"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -201,8 +278,29 @@ export const HubPage: React.FC<HubPageProps> = ({ onRefreshProfiles }) => {
             />
             Inclure les sessions privées Spotify (<code>incognito_mode</code>)
           </label>
-          {importStatus && <span className="num text-amber">{importStatus}</span>}
+          {!importProgress && importStatus && <span className="num text-amber">{importStatus}</span>}
         </div>
+
+        {importProgress && (
+          <div className="mt-4 p-3.5 rounded bg-bg-3 border border-line-2 space-y-2" role="status" aria-live="polite">
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className={importProgress.status === "error" ? "text-ember font-medium break-words min-w-0" : "text-ink break-words min-w-0"}>
+                {importProgress.detail}
+              </span>
+              <span className={`num font-semibold shrink-0 ${importProgress.status === "error" ? "text-ember" : importProgress.status === "done" ? "text-moss" : "text-amber"}`}>
+                {importProgress.percent} %
+              </span>
+            </div>
+            <div className="h-2 w-full bg-bg-4 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-200 ${
+                  importProgress.status === "error" ? "bg-ember" : importProgress.status === "done" ? "bg-moss" : "bg-amber"
+                }`}
+                style={{ width: `${Math.max(2, importProgress.percent)}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Manual CSV column mapping when needed */}
         {csvPreview && csvFile && (

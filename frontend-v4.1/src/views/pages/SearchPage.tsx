@@ -88,7 +88,7 @@ export const SearchPage: React.FC = () => {
                     key={t.track_key || idx}
                     className="py-2.5 flex items-center justify-between gap-3 row-hover px-2 rounded"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       <Cover url={t.artwork_url} alt={t.song_name} size={40} />
                       <div className="min-w-0">
                         <p className="text-[13.5px] font-medium text-ink truncate">{t.song_name}</p>

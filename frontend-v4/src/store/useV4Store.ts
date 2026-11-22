@@ -5,15 +5,18 @@
  */
 
 import { create } from "zustand";
-import type {
-  GlobalFilters,
-  NavTab,
-  ProfileCapabilities,
-  ProfileItem,
-  TurntableFinish,
-  VinylCrateAlbum,
-  VinylDetail,
-  VinylStage,
+import {
+  getActiveTimeUnit,
+  setActiveTimeUnit,
+  type GlobalFilters,
+  type NavTab,
+  type ProfileCapabilities,
+  type ProfileItem,
+  type TimeUnit,
+  type TurntableFinish,
+  type VinylCrateAlbum,
+  type VinylDetail,
+  type VinylStage,
 } from "../api/client";
 
 export type PlaybackSource = "youtube" | "preview";
@@ -37,6 +40,9 @@ export interface V4State {
 
   filters: GlobalFilters;
   setFilters: (patch: Partial<GlobalFilters>) => void;
+
+  timeUnit: TimeUnit;
+  setTimeUnit: (unit: TimeUnit) => void;
 
   profiles: ProfileItem[];
   activeProfileId: number | null;
@@ -112,12 +118,18 @@ export const useV4Store = create<V4State>((set) => ({
 
   filters: {
     profile_id: null,
-    source_provider: "apple_music",
+    source_provider: "all",
     year: "all",
     skip_mode: "lastfm",
     exclude_incognito: false,
   },
   setFilters: (patch) => set((s) => ({ filters: { ...s.filters, ...patch } })),
+
+  timeUnit: getActiveTimeUnit(),
+  setTimeUnit: (timeUnit) => {
+    setActiveTimeUnit(timeUnit);
+    set({ timeUnit });
+  },
 
   profiles: [],
   activeProfileId: null,

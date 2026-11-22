@@ -412,7 +412,7 @@ export const VinylStudioView: React.FC = () => {
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="overlay px-2.5 py-1.5 text-xs text-ink-2 pointer-events-auto flex items-center gap-2 max-w-2xl">
+          <div className="overlay px-2.5 py-1.5 text-xs text-ink-2 pointer-events-auto flex items-center gap-2 min-w-0 max-w-full lg:max-w-2xl overflow-hidden">
             {focusedAlbum ? (
               <>
                 <div className="flex items-center gap-0.5 shrink-0">
@@ -441,7 +441,7 @@ export const VinylStudioView: React.FC = () => {
                 <button
                   onClick={() => openAlbumInspect(focusedAlbum)}
                   data-testid="focused-crate-album"
-                  className="text-left hover:text-amber transition-colors truncate"
+                  className="text-left hover:text-amber transition-colors truncate min-w-0 flex-1"
                   title="Cliquer pour inspecter et poser sur la platine"
                 >
                   <strong className="text-ink">{focusedAlbum.album_name}</strong> · {focusedAlbum.artist_name}{" "}

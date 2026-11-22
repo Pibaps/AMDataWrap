@@ -249,6 +249,87 @@ class EnrichmentManager:
                     await asyncio.sleep(1.2)
 
                 # ----------------------------------------------------------
+                # Stage 2a-bis: Resolve any remaining Spotify Technical Log IDs
+                # ----------------------------------------------------------
+                with db_session() as conn:
+                    sp_rows = conn.execute(
+                        """
+                        SELECT tc.track_key, ptm.external_id AS spotify_id
+                        FROM tracks_catalog tc
+                        JOIN platform_track_mappings ptm
+                          ON ptm.track_key = tc.track_key AND ptm.provider = 'spotify'
+                        WHERE tc.song_name LIKE 'Spotify Track %'
+                        ORDER BY tc.total_plays DESC, tc.total_ms DESC
+                        """
+                    ).fetchall()
+
+                if sp_rows:
+                    from .importers.spotify import (
+                        _save_cached_track_metadata,
+                        fetch_single_spotify_embed,
+                    )
+
+                    self.state["phase"] = "spotify_uri_resolve"
+                    self._broadcast()
+                    for idx, sr in enumerate(sp_rows):
+                        if self._stop_event.is_set():
+                            return
+                        tid = str(sr["spotify_id"])
+                        tkey = str(sr["track_key"])
+                        self.state["current_track"] = f"Spotify URI ({idx + 1}/{len(sp_rows)}) {tid[:10]}"
+                        meta = None
+                        for attempt in range(3):
+                            meta, rate_limited = await fetch_single_spotify_embed(client, tid)
+                            if meta:
+                                break
+                            if rate_limited:
+                                await asyncio.sleep(5.0 * (attempt + 1))
+                            else:
+                                break
+                        if meta and meta.get("song_name"):
+                            _save_cached_track_metadata({tid: meta})
+                            song = meta["song_name"]
+                            p_artist = primary_artist_name(meta.get("artist_name")) or "Artiste inconnu"
+                            dur = int(meta.get("duration_ms") or 0) or None
+                            with db_session() as conn:
+                                conn.execute(
+                                    """
+                                    UPDATE tracks_catalog SET
+                                        song_name = ?,
+                                        song_norm = ?,
+                                        song_group_key = ?,
+                                        artist_name = ?,
+                                        artist_norm = ?,
+                                        artist_group_key = ?,
+                                        artwork_url = COALESCE(artwork_url, ?),
+                                        preview_url = COALESCE(preview_url, ?),
+                                        release_year = COALESCE(release_year, ?),
+                                        release_date = COALESCE(release_date, ?),
+                                        duration_ms = CASE WHEN COALESCE(duration_ms, 0) <= 0 AND ? IS NOT NULL THEN ? ELSE duration_ms END
+                                    WHERE track_key = ?
+                                    """,
+                                    (
+                                        song,
+                                        normalize_basic(song),
+                                        clean_group_key(song, strip_feat=True) or normalize_basic(song),
+                                        p_artist,
+                                        normalize_basic(p_artist),
+                                        clean_group_key(p_artist, strip_feat=True) or normalize_basic(p_artist),
+                                        meta.get("artwork_url"),
+                                        meta.get("preview_url"),
+                                        meta.get("release_year"),
+                                        meta.get("release_date"),
+                                        dur,
+                                        dur,
+                                        tkey,
+                                    ),
+                                )
+                            self.state["version"] += 1
+                            self.get_snapshot()
+                            self._broadcast()
+                        await asyncio.sleep(0.35)
+
+                # ----------------------------------------------------------
                 # Stage 2b: Individual Search (iTunes Search Song+Album -> Deezer fallback)
                 # Prioritized by total_plays DESC (Top tracks & missing artists first)
                 # ----------------------------------------------------------

@@ -5,7 +5,7 @@
  */
 
 import React, { useMemo } from "react";
-import { API, buildQueryParams, formatInt } from "../../api/client";
+import { API, buildQueryParams, formatHoursNum, formatInt } from "../../api/client";
 import { BarList, Cover, Empty, ErrorNote, InfoTooltip, Loading, Page, Section, Stat } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
 import { useV4Store } from "../../store/useV4Store";
@@ -199,7 +199,7 @@ export const SciencePage: React.FC = () => {
                 display: `${Number(d.entropy_bits || 0).toFixed(2)} bits (${Math.round(
                   Number(d.entropy_norm || 0) * 100
                 )} %)`,
-                sub: `${formatInt(d.unique_artists)} artistes uniques · ${Number(d.hours || 0).toFixed(1)} h`,
+                sub: `${formatInt(d.unique_artists)} artistes uniques · ${formatHoursNum(d.hours)}`,
               }))}
             />
           ) : (

@@ -223,7 +223,7 @@ async def api_os_tracker_stop() -> dict[str, Any]:
 
 
 @live_hub_router.get("/api/v4/network/lan-info")
-def api_lan_info(request: Request, frontend_port: int = 5176, backend_port: int = 8000) -> dict[str, Any]:
+def api_lan_info(request: Request, frontend_port: int = 5177, backend_port: int = 8000) -> dict[str, Any]:
     """Return local LAN URLs + QR codes (SVG) for instant smartphone access & mobile scrobbling."""
     lan_ip = detect_lan_ip()
     frontend_url = f"http://{lan_ip}:{frontend_port}"

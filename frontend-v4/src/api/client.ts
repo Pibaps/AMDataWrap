@@ -181,6 +181,7 @@ export const API = {
   importGuides: "/api/v4/import/guides",
   importPreview: "/api/v4/import/preview",
   importV4: "/api/v4/import",
+  importProgress: (id: string) => `/api/v4/import/progress/${encodeURIComponent(id)}`,
   trackingSetup: "/api/v4/tracking/setup",
 } as const;
 
@@ -227,10 +228,40 @@ export function formatDurationMs(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+export type TimeUnit = "hours" | "minutes";
+
+let _activeTimeUnit: TimeUnit =
+  typeof localStorage !== "undefined" && localStorage.getItem("amdw.timeUnit") === "minutes"
+    ? "minutes"
+    : "hours";
+
+export function getActiveTimeUnit(): TimeUnit {
+  return _activeTimeUnit;
+}
+
+export function setActiveTimeUnit(unit: TimeUnit): void {
+  _activeTimeUnit = unit;
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem("amdw.timeUnit", unit);
+  }
+}
+
+export function formatMinutes(ms: number): string {
+  const m = (ms || 0) / 60_000;
+  if (m >= 10 || m === 0) return `${Math.round(m).toLocaleString("fr-FR")} min`;
+  return `${m.toFixed(1).replace(".", ",")} min`;
+}
+
 export function formatHours(ms: number): string {
+  if (_activeTimeUnit === "minutes") return formatMinutes(ms);
   const h = (ms || 0) / 3_600_000;
+  if (h > 0 && h < 1) return formatMinutes(ms);
   if (h >= 10) return `${Math.round(h).toLocaleString("fr-FR")} h`;
   return `${h.toFixed(1).replace(".", ",")} h`;
+}
+
+export function formatHoursNum(hours: number | null | undefined): string {
+  return formatHours((Number(hours) || 0) * 3_600_000);
 }
 
 export function formatInt(n: number | null | undefined): string {

@@ -47,9 +47,20 @@ export const App: React.FC = () => {
   const setActiveTab = useV4Store((s) => s.setActiveTab);
   const filters = useV4Store((s) => s.filters);
   const setFilters = useV4Store((s) => s.setFilters);
+  const timeUnit = useV4Store((s) => s.timeUnit);
+  const setTimeUnit = useV4Store((s) => s.setTimeUnit);
+  const capabilities = useV4Store((s) => s.capabilities);
   const setProfilesData = useV4Store((s) => s.setProfilesData);
 
   const [availableYears, setAvailableYears] = useState<number[]>([]);
+
+  const PLATFORM_LABELS: Record<string, string> = {
+    apple_music: "Apple Music",
+    spotify: "Spotify",
+    youtube_music: "YouTube Music",
+    deezer: "Deezer",
+    tidal: "TIDAL",
+  };
 
   const loadProfilesAndCapabilities = useCallback(async () => {
     try {
@@ -72,6 +83,50 @@ export const App: React.FC = () => {
     loadProfilesAndCapabilities();
   }, [loadProfilesAndCapabilities]);
 
+  useEffect(() => {
+    const qs = filters.source_provider && filters.source_provider !== "all"
+      ? `?source_provider=${encodeURIComponent(filters.source_provider)}`
+      : "";
+    apiGet<{ years?: number[] }>(`${API.filters}${qs}`)
+      .then((flt) => {
+        if (Array.isArray(flt?.years)) setAvailableYears(flt.years);
+      })
+      .catch(() => {});
+  }, [filters.source_provider]);
+
+  const availablePlatforms = capabilities?.platforms?.length ? capabilities.platforms : [];
+  const selectedPlatforms =
+    !filters.source_provider || filters.source_provider === "all"
+      ? availablePlatforms
+      : filters.source_provider
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+  const isAllPlatforms =
+    !filters.source_provider ||
+    filters.source_provider === "all" ||
+    (availablePlatforms.length > 0 && selectedPlatforms.length >= availablePlatforms.length);
+
+  const togglePlatform = (p: string) => {
+    if (isAllPlatforms) {
+      setFilters({ source_provider: p, year: "all" });
+      return;
+    }
+    const next = selectedPlatforms.includes(p)
+      ? selectedPlatforms.filter((x) => x !== p)
+      : [...selectedPlatforms, p];
+    if (next.length === 0 || next.length >= availablePlatforms.length) {
+      setFilters({ source_provider: "all", year: "all" });
+    } else {
+      setFilters({ source_provider: next.join(","), year: "all" });
+    }
+  };
+
+  const activePlatformBanner =
+    selectedPlatforms.length > 0
+      ? selectedPlatforms.map((p) => PLATFORM_LABELS[p] || p.replace(/_/g, " ")).join(" + ").toUpperCase()
+      : "MULTI-PLATEFORME";
+
   return (
     <div className="relative min-h-screen text-ink">
       {/* SINGLE PERSISTENT 3D LISTENING ROOM CANVAS (pauses RAF automatically off studio tab) */}
@@ -87,7 +142,9 @@ export const App: React.FC = () => {
             >
               AMDataWrap
             </button>
-            <span className="kicker hidden sm:inline">APPLE MUSIC · SALON 3D</span>
+            <span className="kicker hidden sm:inline">
+              {activePlatformBanner} · SALON 3D
+            </span>
           </div>
 
           <nav
@@ -113,7 +170,41 @@ export const App: React.FC = () => {
             })}
           </nav>
 
-          <div className="flex items-center gap-1.5 text-xs shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs shrink-0">
+            {availablePlatforms.length > 1 && (
+              <div
+                className="flex items-center gap-1 bg-bg-3 border border-line-2 rounded p-0.5"
+                role="group"
+                aria-label="Filtre plateformes (combinaisons multiples)"
+                data-testid="platform-filter"
+              >
+                <button
+                  type="button"
+                  onClick={() => setFilters({ source_provider: "all", year: "all" })}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                    isAllPlatforms ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink"
+                  }`}
+                >
+                  Toutes
+                </button>
+                {availablePlatforms.map((p) => {
+                  const active = !isAllPlatforms && selectedPlatforms.includes(p);
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => togglePlatform(p)}
+                      title="Cliquer pour activer/désactiver cette plateforme (combinaisons possibles)"
+                      className={`px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap transition-colors ${
+                        active ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink hover:bg-bg-4"
+                      }`}
+                    >
+                      {PLATFORM_LABELS[p] || p.replace(/_/g, " ")}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <select
               value={filters.year}
               onChange={(e) => setFilters({ year: e.target.value })}
@@ -127,12 +218,37 @@ export const App: React.FC = () => {
                 </option>
               ))}
             </select>
+            <div
+              className="flex items-center gap-0.5 bg-bg-3 border border-line-2 rounded p-0.5"
+              role="group"
+              aria-label="Unité de durée"
+              data-testid="time-unit-toggle"
+            >
+              <button
+                type="button"
+                onClick={() => setTimeUnit("hours")}
+                className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
+                  timeUnit === "hours" ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink"
+                }`}
+              >
+                h
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimeUnit("minutes")}
+                className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
+                  timeUnit === "minutes" ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink"
+                }`}
+              >
+                min
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       {/* Active View */}
-      <main className={`relative z-10 ${activeTab === "studio" ? "pointer-events-none" : ""}`}>
+      <main key={activeTab === "studio" ? "studio" : `unit-${timeUnit}`} className={`relative z-10 ${activeTab === "studio" ? "pointer-events-none" : ""}`}>
         {activeTab === "studio" ? (
           <VinylStudioView />
         ) : (

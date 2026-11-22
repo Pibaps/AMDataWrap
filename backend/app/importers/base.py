@@ -7,7 +7,9 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+ProgressCallback = Callable[[str, int, str], None]
 
 from ..analytics.duckdb_engine import export_parquet_snapshot
 from ..continuum.reconciler import canonical_key_for, make_dedup_fingerprint
@@ -139,6 +141,7 @@ def persist_normalized_events(
     metadata: dict[str, Any] | None = None,
     default_utc_offset_sec: int = 3600,
     rebuild_snapshot: bool = True,
+    progress_cb: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Persist normalized multi-platform events into SQLite under `profile_id`.
 
@@ -189,7 +192,19 @@ def persist_normalized_events(
         mapping_rows: set[tuple[str, str, str, str | None]] = set()
         track_increments: dict[str, list[int]] = {}  # track_key -> [plays, ms]
 
-        for ev in sorted_events:
+        total_events = len(sorted_events)
+        report_step = max(500, total_events // 20) if total_events else 1
+        if progress_cb:
+            progress_cb("persisting", 60, f"Préparation de {total_events:,} écoutes…".replace(",", " "))
+
+        for ev_idx, ev in enumerate(sorted_events):
+            if progress_cb and ev_idx > 0 and ev_idx % report_step == 0:
+                pct = 60 + int(22 * (ev_idx / max(total_events, 1)))
+                progress_cb(
+                    "persisting",
+                    pct,
+                    f"Normalisation des écoutes ({ev_idx:,} / {total_events:,})…".replace(",", " "),
+                )
             song = clean_display_title(ev.song_name)
             if not song:
                 continue
@@ -312,6 +327,9 @@ def persist_normalized_events(
             )
             inserted += 1
 
+        if progress_cb:
+            progress_cb("persisting", 84, f"Enregistrement SQLite ({inserted:,} écoutes)…".replace(",", " "))
+
         if new_tracks:
             conn.executemany(
                 """
@@ -427,14 +445,21 @@ def persist_normalized_events(
             ),
         )
 
+        if progress_cb:
+            progress_cb("indexing", 91, "Mise à jour de l'index plein-texte FTS5…")
         rebuild_fts_indexes(conn)
         merged_refreshed = refresh_all_merged_profiles_containing(conn, target_profile_id)
 
     if rebuild_snapshot and inserted > 0:
+        if progress_cb:
+            progress_cb("snapshot", 95, "Génération du snapshot analytique Parquet…")
         try:
             export_parquet_snapshot()
         except Exception:
             pass
+
+    if progress_cb:
+        progress_cb("done", 100, "Import terminé.")
 
     return {
         "ok": True,

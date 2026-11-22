@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 from contextlib import asynccontextmanager
@@ -110,7 +111,7 @@ async def lifespan(app: FastAPI):
         row = await cur.fetchone()
         has_data = bool(row and row["total_play_events"] > 0)
 
-    if not has_data and DEFAULT_ZIP_PATH.exists():
+    if not has_data and DEFAULT_ZIP_PATH.exists() and os.environ.get("AMDW_AUTO_INGEST_APPLE") == "1":
         await asyncio.to_thread(ingest_zip, DEFAULT_ZIP_PATH, DEFAULT_ZIP_PATH.name)
         has_data = True
 
@@ -133,8 +134,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AMDataWrap API",
-    version="3.0.0",
-    description="Backend unifié AMDataWrap (V1 Classique, V2 Spatial 3D, V3 Continuum, V4 Sonic Odyssey × Vinyl Studio 3D).",
+    version="4.1.0",
+    description="Backend unifié AMDataWrap (V4.1 Salon d'écoute 3D + V1/V2/V3/V4.0).",
     lifespan=lifespan,
 )
 
@@ -196,7 +197,7 @@ async def health():
         meta = await cur.fetchone()
     return {
         "status": "ok",
-        "version": "3.0.0",
+        "version": "4.1.0",
         "has_data": bool(meta and meta["total_play_events"] > 0),
         "meta": dict(meta) if meta else None,
         "enrichment": enrichment_manager.get_snapshot(),
@@ -227,6 +228,57 @@ async def upload_zip(file: UploadFile = File(...)):
     enrichment_manager.start(force_restart=True)
     job_worker.start()
     return {"ok": True, "summary": result}
+
+
+@app.post("/api/v4/data/clear")
+async def clear_all_data():
+    """Clear all imported listening data (Apple Music / Spotify / etc.) and reset Parquet snapshot."""
+    await enrichment_manager.stop()
+    await job_worker.stop()
+
+    def _wipe():
+        from .db import PARQUET_SNAPSHOT_PATH, rebuild_fts_indexes
+
+        with db_session() as conn:
+            for tbl in (
+                "play_events",
+                "lyric_events",
+                "search_events",
+                "recording_isrcs",
+                "platform_track_mappings",
+                "profile_sources",
+                "profile_merged_exclusions",
+                "tracks_catalog",
+            ):
+                try:
+                    conn.execute(f"DELETE FROM {tbl}")
+                except Exception:
+                    pass
+            conn.execute(
+                """
+                UPDATE import_meta SET
+                    zip_filename = NULL,
+                    zip_sha256 = NULL,
+                    imported_at = NULL,
+                    total_raw_rows = 0,
+                    total_play_events = 0,
+                    total_lyric_events = 0,
+                    total_search_events = 0,
+                    unique_tracks = 0,
+                    pass1_artist_pct = 0.0,
+                    pass1_genre_year_pct = 0.0,
+                    min_date = NULL,
+                    max_date = NULL
+                WHERE id = 1
+                """
+            )
+            rebuild_fts_indexes(conn)
+        if PARQUET_SNAPSHOT_PATH.exists():
+            PARQUET_SNAPSHOT_PATH.unlink(missing_ok=True)
+
+    await asyncio.to_thread(_wipe)
+    enrichment_manager.get_snapshot()
+    return {"ok": True, "message": "Toutes les données importées ont été effacées."}
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +347,7 @@ async def artwork_proxy(
         or url.startswith("https://archive.org")
         or url.startswith("https://ia")
         or url.startswith("https://i.scdn.co")
+        or url.startswith("https://image-cdn-")
         or url.startswith("https://lh3.googleusercontent.com")
         or url.startswith("https://i.ytimg.com")
     ):

@@ -12,7 +12,7 @@ from ..profiles import (
     record_profile_source,
     refresh_all_merged_profiles_containing,
 )
-from .base import compute_sha256
+from .base import ProgressCallback, compute_sha256
 
 
 def import_apple_zip(
@@ -21,6 +21,7 @@ def import_apple_zip(
     filename: str | None = None,
     profile_id: int | None = None,
     profile_name: str | None = None,
+    progress_cb: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Import an Apple Music RGPD archive while registering profile_sources & merged profiles.
 
@@ -32,26 +33,14 @@ def import_apple_zip(
             conn, profile_id=profile_id, profile_name=profile_name
         )
     file_sha = compute_sha256(zip_path)
-    summary = ingest_zip(zip_path, filename=filename or zip_path.name)
+    summary = ingest_zip(
+        zip_path,
+        filename=filename or zip_path.name,
+        profile_id=target_profile_id,
+        progress_cb=progress_cb,
+    )
 
     with db_session() as conn:
-        if target_profile_id != 1:
-            conn.execute(
-                "UPDATE play_events SET profile_id = ? WHERE source_provider = 'apple_rgpd_zip' AND profile_id = 1",
-                (target_profile_id,),
-            )
-            conn.execute(
-                "UPDATE lyric_events SET profile_id = ? WHERE profile_id = 1",
-                (target_profile_id,),
-            )
-            conn.execute(
-                "UPDATE search_events SET profile_id = ? WHERE profile_id = 1",
-                (target_profile_id,),
-            )
-            conn.execute(
-                "UPDATE favorites SET profile_id = ? WHERE profile_id = 1",
-                (target_profile_id,),
-            )
         record_profile_source(
             conn,
             target_profile_id,
@@ -65,6 +54,9 @@ def import_apple_zip(
             metadata={"parser": "apple_rgpd_zip"},
         )
         merged = refresh_all_merged_profiles_containing(conn, target_profile_id)
+
+    if progress_cb:
+        progress_cb("done", 100, "Import Apple Music terminé.")
 
     return {
         "ok": True,

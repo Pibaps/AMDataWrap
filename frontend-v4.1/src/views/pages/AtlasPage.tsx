@@ -5,7 +5,7 @@
  */
 
 import React, { useMemo, useState } from "react";
-import { API, buildQueryParams, formatInt } from "../../api/client";
+import { API, buildQueryParams, formatHoursNum, formatInt } from "../../api/client";
 import { BarList, Cover, Empty, ErrorNote, Loading, Page, Section, Stat } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
 import { useV4Store } from "../../store/useV4Store";
@@ -205,7 +205,7 @@ export const AtlasPage: React.FC = () => {
                   </span>
                 ),
                 value: Number(c.plays || 0),
-                display: `${formatInt(c.plays)} écoutes · ${Number(c.hours || 0).toFixed(1)} h`,
+                display: `${formatInt(c.plays)} écoutes · ${formatHoursNum(c.hours)}`,
                 sub: `${c.artists} artistes`,
               }))}
             />
@@ -234,7 +234,7 @@ export const AtlasPage: React.FC = () => {
                 </div>
                 <div className="text-right num shrink-0">
                   <p className="text-ink">{formatInt(n.plays)}×</p>
-                  <p className="text-ink-3 text-[11px]">{Number(n.hours || 0).toFixed(1)} h</p>
+                  <p className="text-ink-3 text-[11px]">{formatHoursNum(n.hours)}</p>
                 </div>
               </div>
             ))}

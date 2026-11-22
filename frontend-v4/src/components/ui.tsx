@@ -34,14 +34,14 @@ export const Section: React.FC<{
   className?: string;
   children: React.ReactNode;
 }> = ({ title, kicker, aside, className = "", children }) => (
-  <section className={`panel p-5 sm:p-6 ${className}`}>
+  <section className={`panel p-5 sm:p-6 min-w-0 ${className}`}>
     {(title || kicker || aside) && (
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div className="min-w-0 flex-1">
           {kicker && <p className="kicker mb-1">{kicker}</p>}
-          {title && <h2 className="font-display text-[20px] font-[500] leading-tight">{title}</h2>}
+          {title && <h2 className="font-display text-[20px] font-[500] leading-tight break-words">{title}</h2>}
         </div>
-        {aside}
+        {aside && <div className="shrink-0 max-w-full">{aside}</div>}
       </div>
     )}
     {children}

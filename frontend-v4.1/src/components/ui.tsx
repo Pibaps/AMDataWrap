@@ -38,7 +38,7 @@ export const InfoTooltip: React.FC<{ text: string; label?: string }> = ({ text, 
     </button>
     <span
       role="tooltip"
-      className="pointer-events-none opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-64 max-w-[80vw] rounded bg-bg-2 border border-line-2 px-3 py-2 text-[11.5px] leading-snug font-sans font-normal normal-case tracking-normal text-ink-2 shadow-xl text-left"
+      className="hidden group-hover:block group-focus-within:block pointer-events-none absolute bottom-full left-0 sm:left-1/2 sm:-translate-x-1/2 mb-2 z-50 w-64 max-w-[min(16rem,calc(100vw-2rem))] rounded bg-bg-3 border border-line-2 px-3 py-2 text-[11.5px] leading-snug font-sans font-normal normal-case tracking-normal text-ink shadow-2xl text-left whitespace-normal break-words"
     >
       {text}
     </span>
@@ -52,14 +52,14 @@ export const Section: React.FC<{
   className?: string;
   children: React.ReactNode;
 }> = ({ title, kicker, aside, className = "", children }) => (
-  <section className={`panel p-5 sm:p-6 ${className}`}>
+  <section className={`panel p-5 sm:p-6 min-w-0 ${className}`}>
     {(title || kicker || aside) && (
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div className="min-w-0 flex-1">
           {kicker && <p className="kicker mb-1">{kicker}</p>}
-          {title && <h2 className="font-display text-[20px] font-[500] leading-tight">{title}</h2>}
+          {title && <h2 className="font-display text-[20px] font-[500] leading-tight break-words">{title}</h2>}
         </div>
-        {aside}
+        {aside && <div className="shrink-0 max-w-full">{aside}</div>}
       </div>
     )}
     {children}

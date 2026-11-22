@@ -115,6 +115,75 @@ def test_spotify_account_data_import(isolated_db, tmp_path: Path):
     assert res["inserted_events"] == 2
 
 
+def test_spotify_technical_log_zip_detection_and_parsing(isolated_db, tmp_path: Path, monkeypatch):
+    import zipfile
+    from backend.app.importers import spotify as sp_mod
+
+    monkeypatch.setattr(
+        sp_mod,
+        "resolve_spotify_track_ids",
+        lambda tids: {
+            "3ssRqeOxEqTUZjsMuDeOU9": {
+                "song_name": "Problèmes de Riche",
+                "artist_name": "Josman",
+                "duration_ms": 192000,
+                "release_year": 2023,
+                "release_date": "2023-10-28T00:00:00Z",
+                "artwork_url": "https://image-cdn-fa.spotifycdn.com/image/test",
+                "preview_url": "https://p.scdn.co/mp3-preview/test",
+            }
+        },
+    )
+
+    core_records = [
+        {
+            "timestamp_utc": "2024-08-17T13:34:06.803Z",
+            "context_device_manufacturer": "realme",
+            "context_device_model": "RMX3472",
+            "context_os_name": "android",
+            "message_content_uri": "spotify:track:3ssRqeOxEqTUZjsMuDeOU9",
+            "message_content_is_downloaded": False,
+            "message_incognito_mode": False,
+            "message_ms_played": 192000,
+            "message_reason_end": "trackdone",
+            "message_reason_start": "trackdone",
+            "message_shuffle": True,
+        },
+        {
+            "timestamp_utc": "2024-08-17T13:40:00.000Z",
+            "message_content_uri": "spotify:episode:79U10PVVNCXgZb5OhsQ4gY",
+            "message_ms_played": 60000,
+        },
+    ]
+    zpath = tmp_path / "my_spotify_data.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.writestr("Spotify Technical Log Information/RawCoreStream_Hourly.json", json.dumps(core_records))
+
+    assert detect_import_format(zpath) == "spotify"
+    res = import_file_v4(zpath, profile_name="Spotify Tech Log")
+    assert res["source_provider"] == "spotify_technical_log"
+    assert res["inserted_events"] == 1
+    assert res["parser_stats"]["podcasts_filtered"] == 1
+    assert res["parser_stats"]["resolved_tracks"] == 1
+
+    # Also verify PlaybackSegments fallback parsing
+    seg_events, seg_mode, _ = parse_spotify_records(
+        [
+            {
+                "timestamp_utc": "2026-02-01T10:00:00Z",
+                "message_track_uri": "spotify:track:3ssRqeOxEqTUZjsMuDeOU9",
+                "message_segments": "[[0, 120000], [125000, 155000]]",
+            }
+        ],
+        track_metadata={
+            "3ssRqeOxEqTUZjsMuDeOU9": {"song_name": "Problèmes de Riche", "artist_name": "Josman"}
+        },
+    )
+    assert seg_mode == "spotify_technical_log"
+    assert len(seg_events) == 1
+    assert seg_events[0].play_duration_ms == 150000
+
+
 # ---------------------------------------------------------------------------
 # 2. YouTube Music Takeout Tests
 # ---------------------------------------------------------------------------
@@ -167,6 +236,34 @@ def test_youtube_music_takeout_multilingual_and_topic_cleanup(isolated_db, tmp_p
             "SELECT external_id FROM platform_track_mappings WHERE provider = 'youtube'"
         ).fetchall()
         assert {m["external_id"] for m in mapping} == {"zhl-Cs1-sG4", "5NV6Rdv1a3I"}
+
+
+def test_youtube_music_takeout_html_zip_french_nbsp(isolated_db, tmp_path: Path):
+    import zipfile
+
+    html_content = (
+        '<div class="outer-cell mdl-cell"><div class="mdl-grid">'
+        '<div class="header-cell"><p class="mdl-typography--title">YouTube\u00a0Music<br></p></div>'
+        '<div class="content-cell">Vous avez regardé\u00a0<a href="https://music.youtube.com/watch?v=3sAdg1N-byw">The Archer</a><br>'
+        '<a href="https://www.youtube.com/channel/UC1">Taylor Swift - Topic</a><br>5 juin 2026, 21:39:37 CET<br></div></div></div>'
+        '<div class="outer-cell mdl-cell"><div class="mdl-grid">'
+        '<div class="header-cell"><p class="mdl-typography--title">YouTube<br></p></div>'
+        '<div class="content-cell">Vous avez regardé\u00a0<a href="https://www.youtube.com/watch?v=y5ND7TWvPHc">Peppa Pig Phonk</a><br>'
+        '<a href="https://www.youtube.com/channel/UC2">RXDXVIL - Topic</a><br>3 juil. 2026, 22:13:11 CEST<br></div></div></div>'
+        '<div class="outer-cell mdl-cell"><div class="mdl-grid">'
+        '<div class="header-cell"><p class="mdl-typography--title">YouTube<br></p></div>'
+        '<div class="content-cell">Vous avez regardé\u00a0<a href="https://www.youtube.com/watch?v=WOl5jjqBJYA">24H GTA 6</a><br>'
+        '<a href="https://www.youtube.com/channel/UC3">SQUEEZIE</a><br>20 nov. 2026, 19:23:52 CET<br></div></div></div>'
+    )
+    zpath = tmp_path / "takeout-2026.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.writestr("Takeout/YouTube et YouTube\u00a0Music/historique/watch-history.html", html_content)
+
+    assert detect_import_format(zpath) == "youtube_music"
+    res = import_file_v4(zpath, profile_name="Mon Takeout HTML")
+    assert res["source_provider"] == "youtube_music"
+    assert res["inserted_events"] == 2
+    assert res["parser_stats"]["non_ytm_filtered"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -302,7 +399,7 @@ def test_v4_endpoints_webhooks_websockets_and_headers(isolated_db, tmp_path: Pat
     lan_data = lan.json()
     assert "<svg" in lan_data["frontend_qr_svg"]
     assert "<svg" in lan_data["listenbrainz_qr_svg"]
-    assert ":5176" in lan_data["frontend_v4_url"]
+    assert ":5177" in lan_data["frontend_v4_url"]
 
     # Web Scrobbler webhook (must always return HTTP 200)
     wh = client.post(
