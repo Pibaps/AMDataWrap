@@ -154,10 +154,52 @@ async def api_resolve_playback(
     tkey = track_key or make_track_key(song, album or "Single / Inconnu")
     preview_url: str | None = None
     artwork_url: str | None = None
+    album_key: str | None = None
+    duration_ms: int = 0
     effective_artist = artist
     effective_album = album
 
     with db_session() as conn:
+        t_row = conn.execute(
+            "SELECT track_key, album_group_key, artist_name, album_name, preview_url, artwork_url, duration_ms FROM tracks_catalog WHERE track_key = ?",
+            (tkey,),
+        ).fetchone()
+        if not t_row:
+            if effective_artist:
+                t_row = conn.execute(
+                    """
+                    SELECT track_key, album_group_key, artist_name, album_name, preview_url, artwork_url, duration_ms
+                    FROM tracks_catalog
+                    WHERE LOWER(song_name) = LOWER(?) AND LOWER(COALESCE(artist_name, '')) = LOWER(?)
+                    ORDER BY total_plays DESC
+                    LIMIT 1
+                    """,
+                    (song, effective_artist),
+                ).fetchone()
+            if not t_row:
+                t_row = conn.execute(
+                    """
+                    SELECT track_key, album_group_key, artist_name, album_name, preview_url, artwork_url, duration_ms
+                    FROM tracks_catalog
+                    WHERE LOWER(song_name) = LOWER(?)
+                    ORDER BY total_plays DESC
+                    LIMIT 1
+                    """,
+                    (song,),
+                ).fetchone()
+            if t_row:
+                tkey = t_row["track_key"]
+
+        if t_row:
+            preview_url = t_row["preview_url"]
+            artwork_url = t_row["artwork_url"]
+            album_key = t_row["album_group_key"]
+            duration_ms = int(t_row["duration_ms"] or 0)
+            if t_row["artist_name"]:
+                effective_artist = t_row["artist_name"]
+            if t_row["album_name"] and not effective_album:
+                effective_album = t_row["album_name"]
+
         # 1. Check permanent cache in platform_track_mappings
         cached = None
         if not force_refresh:
@@ -169,17 +211,6 @@ async def api_resolve_playback(
                 """,
                 (tkey,),
             ).fetchone()
-        t_row = conn.execute(
-            "SELECT artist_name, album_name, preview_url, artwork_url, duration_ms FROM tracks_catalog WHERE track_key = ?",
-            (tkey,),
-        ).fetchone()
-        if t_row:
-            preview_url = t_row["preview_url"]
-            artwork_url = t_row["artwork_url"]
-            if t_row["artist_name"]:
-                effective_artist = t_row["artist_name"]
-            if t_row["album_name"] and not effective_album:
-                effective_album = t_row["album_name"]
 
         if cached and cached["external_id"]:
             return {
@@ -187,6 +218,8 @@ async def api_resolve_playback(
                 "cached": True,
                 "provider": "youtube_iframe",
                 "track_key": tkey,
+                "album_key": album_key,
+                "duration_ms": duration_ms,
                 "video_id": cached["external_id"],
                 "url": cached["url"] or f"https://music.youtube.com/watch?v={cached['external_id']}",
                 "preview_url": preview_url,
@@ -225,6 +258,8 @@ async def api_resolve_playback(
             "cached": False,
             "provider": "youtube_iframe",
             "track_key": tkey,
+            "album_key": album_key,
+            "duration_ms": duration_ms,
             "video_id": video_id,
             "url": url,
             "preview_url": preview_url,
@@ -236,6 +271,8 @@ async def api_resolve_playback(
         "cached": False,
         "provider": "preview_audio" if preview_url else "none",
         "track_key": tkey,
+        "album_key": album_key,
+        "duration_ms": duration_ms,
         "video_id": None,
         "url": None,
         "preview_url": preview_url,

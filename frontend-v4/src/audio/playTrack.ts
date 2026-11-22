@@ -4,7 +4,7 @@
  * falls back to the 30 s preview. The headless PlayerEngine reacts to the store.
  */
 
-import { API, apiGet } from "../api/client";
+import { API, apiGet, buildQueryParams, type VinylDetail } from "../api/client";
 import { useV4Store, type ActiveTrack } from "../store/useV4Store";
 import { playbackClock } from "./playbackClock";
 
@@ -21,12 +21,65 @@ export interface PlayRequest {
 
 interface ResolveOut {
   ok: boolean;
+  track_key?: string;
+  album_key?: string | null;
+  duration_ms?: number | null;
   video_id: string | null;
   preview_url: string | null;
   artwork_url: string | null;
 }
 
 const resolveCache = new Map<string, Promise<ResolveOut>>();
+
+function findTrackPositionInVinyl(
+  detail: VinylDetail,
+  trackKey: string | undefined,
+  songName: string
+): { sideIndex: number; trackIndex: number } {
+  const normSong = songName.trim().toLowerCase();
+  if (trackKey) {
+    for (let s = 0; s < detail.sides.length; s++) {
+      const tracks = detail.sides[s]?.tracks || [];
+      const idx = tracks.findIndex((t) => t.track_key === trackKey);
+      if (idx >= 0) return { sideIndex: s, trackIndex: idx };
+    }
+  }
+  for (let s = 0; s < detail.sides.length; s++) {
+    const tracks = detail.sides[s]?.tracks || [];
+    const idx = tracks.findIndex((t) => t.title.trim().toLowerCase() === normSong);
+    if (idx >= 0) return { sideIndex: s, trackIndex: idx };
+  }
+  return { sideIndex: 0, trackIndex: 0 };
+}
+
+async function syncPlatterForTrack(
+  albumKey: string,
+  trackKey: string | undefined,
+  songName: string,
+  seq: number
+): Promise<ActiveTrack["vinyl"]> {
+  const st = useV4Store.getState();
+  let detail = st.onPlatter?.album_key === albumKey ? st.onPlatter : null;
+  if (!detail) {
+    try {
+      const qs = buildQueryParams(st.filters);
+      detail = await apiGet<VinylDetail>(`${API.vinyl(albumKey)}${qs}`);
+    } catch {
+      return null;
+    }
+    if (seq !== requestSeq) return null;
+  }
+
+  const { sideIndex, trackIndex } = findTrackPositionInVinyl(detail, trackKey, songName);
+  const latest = useV4Store.getState();
+  if (latest.onPlatter?.album_key !== detail.album_key) {
+    latest.setOnPlatter(detail);
+  }
+  if (latest.activeSideIndex !== sideIndex) {
+    latest.setActiveSideIndex(sideIndex);
+  }
+  return { album_key: detail.album_key, sideIndex, trackIndex };
+}
 
 export function resolveTrack(req: PlayRequest): Promise<ResolveOut> {
   const k = `${req.artist_name}::${req.song_name}::${req.album_name || ""}`.toLowerCase();
@@ -71,6 +124,14 @@ export async function playTrack(req: PlayRequest): Promise<void> {
   const res = await resolveTrack(req);
   if (seq !== requestSeq) return; // superseded by a newer request
 
+  const resolvedTrackKey = res.track_key || req.track_key;
+  const resolvedDuration = duration > 0 ? duration : Number(res.duration_ms || 0);
+  let vinylCtx: ActiveTrack["vinyl"] = req.vinyl ?? null;
+  if (!vinylCtx && res.album_key) {
+    vinylCtx = await syncPlatterForTrack(res.album_key, resolvedTrackKey, req.song_name, seq);
+    if (seq !== requestSeq) return;
+  }
+
   const preview = res.preview_url || req.preview_url || null;
   const wantYt = useV4Store.getState().preferredSource === "youtube";
   const useYt = wantYt && Boolean(res.video_id);
@@ -78,17 +139,19 @@ export async function playTrack(req: PlayRequest): Promise<void> {
     useV4Store.getState().setPlaybackError("Aucune source audio trouvée pour ce titre.");
     return;
   }
+  const finalDuration = useYt ? resolvedDuration : 30_000;
+  playbackClock.reset(finalDuration);
   useV4Store.getState().setNowPlaying({
     song_name: req.song_name,
     artist_name: req.artist_name,
     album_name: req.album_name || "",
     artwork_url: req.artwork_url || res.artwork_url || null,
-    track_key: req.track_key,
+    track_key: resolvedTrackKey,
     video_id: res.video_id,
     preview_url: preview,
-    duration_ms: useYt ? duration : 30_000,
+    duration_ms: finalDuration,
     source: useYt ? "youtube" : "preview",
-    vinyl: req.vinyl ?? null,
+    vinyl: vinylCtx,
   });
   useV4Store.getState().setIsPlaying(true);
 }
