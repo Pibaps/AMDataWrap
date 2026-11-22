@@ -490,7 +490,14 @@ def api_get_vinyl_crate(
                 MAX(tc.artist_name) AS artist_name,
                 MAX(tc.genre) AS genre,
                 MAX(tc.release_year) AS release_year,
-                MAX(tc.artwork_url) AS artwork_url,
+                (
+                    SELECT tc2.artwork_url
+                    FROM tracks_catalog tc2
+                    WHERE tc2.album_group_key = tc.album_group_key
+                      AND tc2.artwork_url IS NOT NULL AND tc2.artwork_url != ''
+                    ORDER BY tc2.total_plays DESC, tc2.song_name ASC
+                    LIMIT 1
+                ) AS artwork_url,
                 MAX(tc.back_cover_url) AS back_cover_url,
                 COUNT(pe.id) AS plays,
                 COALESCE(SUM(pe.play_duration_ms), 0) AS total_ms,

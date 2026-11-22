@@ -407,7 +407,14 @@ def get_top_artists(f: FilterParams, limit: int = 50, offset: int = 0) -> dict[s
                     AVG(pe.completion_ratio) AS avg_completion,
                     MIN(pe.local_date) AS first_discovered,
                     MAX(tc.genre) AS primary_genre,
-                    MAX(tc.artwork_url) AS artwork_url
+                    (
+                        SELECT tc2.artwork_url
+                        FROM tracks_catalog tc2
+                        WHERE tc2.artist_group_key = tc.artist_group_key
+                          AND tc2.artwork_url IS NOT NULL AND tc2.artwork_url != ''
+                        ORDER BY tc2.total_plays DESC, tc2.song_name ASC
+                        LIMIT 1
+                    ) AS artwork_url
                 FROM play_events pe
                 JOIN tracks_catalog tc ON tc.track_key = pe.track_key
                 WHERE {where_sql} AND tc.artist_group_key IS NOT NULL AND tc.artist_group_key != ''
@@ -474,7 +481,14 @@ def get_top_albums(f: FilterParams, limit: int = 50, offset: int = 0) -> dict[st
                     MAX(tc.artist_group_key) AS artist_group_key,
                     MAX(tc.release_year) AS release_year,
                     MAX(tc.genre) AS genre,
-                    MAX(tc.artwork_url) AS artwork_url,
+                    (
+                        SELECT tc2.artwork_url
+                        FROM tracks_catalog tc2
+                        WHERE tc2.album_group_key = tc.album_group_key
+                          AND tc2.artwork_url IS NOT NULL AND tc2.artwork_url != ''
+                        ORDER BY tc2.total_plays DESC, tc2.song_name ASC
+                        LIMIT 1
+                    ) AS artwork_url,
                     MAX(tc.preview_url) AS preview_url,
                     COUNT(*) AS plays,
                     SUM(pe.play_duration_ms) AS total_ms,

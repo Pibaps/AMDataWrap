@@ -256,7 +256,8 @@ export const PersistentStageCanvas: React.FC = () => {
     onReady: (entry: { tex: THREE.CanvasTexture; img: HTMLImageElement | null; accent: string }) => void
   ) => {
     const cache = coverTexCacheRef.current;
-    const hit = cache.get(albumKey);
+    const cacheKey = `${albumKey}::${artworkUrl || ""}`;
+    const hit = cache.get(cacheKey);
     if (hit && hit.img) {
       onReady(hit);
       return;
@@ -264,9 +265,9 @@ export const PersistentStageCanvas: React.FC = () => {
     if (!hit) {
       const fallbackTex = makeCoverTexture(null, { title, artist, seed }, 256);
       const placeholder = { tex: fallbackTex, img: null, accent: "#b8723c" };
-      cache.set(albumKey, placeholder);
+      cache.set(cacheKey, placeholder);
     }
-    onReady(cache.get(albumKey)!);
+    onReady(cache.get(cacheKey)!);
 
     const proxied = coverUrl(artworkUrl, 256);
     if (!proxied) return;
@@ -274,14 +275,14 @@ export const PersistentStageCanvas: React.FC = () => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      const prev = cache.get(albumKey);
+      const prev = cache.get(cacheKey);
       const hiTex = makeCoverTexture(img, { title, artist, seed }, 256);
       if (prev?.tex && prev.tex !== hiTex) {
         prev.tex.dispose();
       }
       const accent = averageColor(img);
       const entry = { tex: hiTex, img, accent };
-      cache.set(albumKey, entry);
+      cache.set(cacheKey, entry);
       onReady(entry);
     };
     img.src = proxied;
