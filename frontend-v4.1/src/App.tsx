@@ -190,80 +190,88 @@ export const App: React.FC = () => {
       {/* SINGLE PERSISTENT 3D LISTENING ROOM CANVAS (pauses RAF automatically off studio tab) */}
       <PersistentStageCanvas />
 
-      {/* Clean Minimal Top Header (Brand + 12 Tabs + Controls) */}
-      <header className="sticky top-0 z-30 bg-bg-2/95 border-b border-line px-4 sm:px-6 lg:px-10 py-2">
-        <div className="max-w-[1680px] mx-auto flex flex-wrap xl:flex-nowrap items-center justify-between gap-x-3 gap-y-1.5">
-          <div className="flex items-baseline gap-2 shrink-0">
-            <button
-              onClick={() => setActiveTab("studio")}
-              className="font-display text-lg font-[600] tracking-tight text-ink hover:text-amber transition-colors"
+      {/* Clean Two-Tier Header: Row 1 (Brand + 12 Tabs), Row 2 (Enrich. + Filters & Controls) */}
+      <header className="sticky top-0 z-30 bg-bg-2/95 border-b border-line px-4 sm:px-6 lg:px-8 py-2">
+        <div className="max-w-[1440px] mx-auto flex flex-col gap-1.5">
+          {/* Tier 1: Brand + Navigation Tabs */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-baseline gap-2.5 shrink-0">
+              <button
+                onClick={() => setActiveTab("studio")}
+                className="font-display text-lg font-[600] tracking-tight text-ink hover:text-amber transition-colors"
+              >
+                AMDataWrap
+              </button>
+              <span className="kicker hidden lg:inline whitespace-nowrap">
+                {activePlatformBanner} · SALON 3D
+              </span>
+            </div>
+
+            <nav
+              aria-label="Navigation AMDataWrap V4"
+              className="flex items-center gap-1 overflow-x-auto max-w-full py-0.5"
             >
-              AMDataWrap
-            </button>
-            <span className="kicker hidden 2xl:inline whitespace-nowrap">
-              {activePlatformBanner} · SALON 3D
-            </span>
+              {NAV_TAB_IDS.map((id) => {
+                const active = activeTab === id;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setActiveTab(id)}
+                    data-testid={`nav-${id}`}
+                    className={`px-2.5 py-1 rounded text-xs font-medium whitespace-nowrap transition-colors ${
+                      active
+                        ? "bg-amber text-[#1a0f07] font-semibold"
+                        : "text-ink-2 hover:text-ink hover:bg-bg-3"
+                    }`}
+                  >
+                    {t(`nav.${id}`)}
+                  </button>
+                );
+              })}
+            </nav>
           </div>
 
-          <nav
-            aria-label="Navigation AMDataWrap V4"
-            className="order-3 xl:order-none w-full xl:w-auto flex items-center gap-0.5 overflow-x-auto py-0.5"
-          >
-            {NAV_TAB_IDS.map((id) => {
-              const active = activeTab === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => setActiveTab(id)}
-                  data-testid={`nav-${id}`}
-                  className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap transition-colors ${
-                    active
-                      ? "bg-amber text-[#1a0f07] font-semibold"
-                      : "text-ink-2 hover:text-ink hover:bg-bg-3"
-                  }`}
+          {/* Tier 2: Enrich. + Platform Sources + Year / Filters / Lang / Unit */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-line/60 text-xs">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <EnrichmentPill hasData={hasData} />
+              {availablePlatforms.length > 1 && (
+                <div
+                  className="flex items-center gap-1 bg-bg-3 border border-line-2 rounded p-0.5"
+                  role="group"
+                  aria-label="Filtre plateformes (combinaisons multiples)"
+                  data-testid="platform-filter"
                 >
-                  {t(`nav.${id}`)}
-                </button>
-              );
-            })}
-          </nav>
+                  <button
+                    type="button"
+                    onClick={() => setFilters({ source_provider: "all", year: "all" })}
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                      isAllPlatforms ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink"
+                    }`}
+                  >
+                    {t("header.allPlatforms")}
+                  </button>
+                  {availablePlatforms.map((p) => {
+                    const active = !isAllPlatforms && selectedPlatforms.includes(p);
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => togglePlatform(p)}
+                        title="Cliquer pour activer/désactiver cette plateforme (combinaisons possibles)"
+                        className={`px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap transition-colors ${
+                          active ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink hover:bg-bg-4"
+                        }`}
+                      >
+                        {PLATFORM_LABELS[p] || p.replace(/_/g, " ")}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
-          <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 text-xs shrink-0">
-            <EnrichmentPill hasData={hasData} />
-            {availablePlatforms.length > 1 && (
-              <div
-                className="flex items-center gap-1 bg-bg-3 border border-line-2 rounded p-0.5"
-                role="group"
-                aria-label="Filtre plateformes (combinaisons multiples)"
-                data-testid="platform-filter"
-              >
-                <button
-                  type="button"
-                  onClick={() => setFilters({ source_provider: "all", year: "all" })}
-                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
-                    isAllPlatforms ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink"
-                  }`}
-                >
-                  {t("header.allPlatforms")}
-                </button>
-                {availablePlatforms.map((p) => {
-                  const active = !isAllPlatforms && selectedPlatforms.includes(p);
-                  return (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => togglePlatform(p)}
-                      title="Cliquer pour activer/désactiver cette plateforme (combinaisons possibles)"
-                      className={`px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap transition-colors ${
-                        active ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink hover:bg-bg-4"
-                      }`}
-                    >
-                      {PLATFORM_LABELS[p] || p.replace(/_/g, " ")}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-1.5">
             <select
               value={filters.year}
               onChange={(e) => setFilters({ year: e.target.value })}
@@ -339,6 +347,7 @@ export const App: React.FC = () => {
               >
                 min
               </button>
+            </div>
             </div>
           </div>
         </div>
