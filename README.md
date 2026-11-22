@@ -69,7 +69,7 @@ Tous chargés en *lazy-loading* (`React.lazy`) avec filtrage global multi-platef
 6. **Science (`SciencePage`)** : Nombre d'Eddington, Indice de Gini & Courbe de Lorenz, Entropie de Shannon (globale et par appareil), courbes de survie & demi-vie, artistes-passerelles, transitions de Markov, ères PELT (`ruptures`) et Roue de Camelot.
 7. **Atlas (`AtlasPage`)** : Carte mondiale SVG équirectangulaire (zéro dépendance tuiles), foyers géographiques MusicBrainz/Wikidata et arcs d'écoute.
 8. **Constellation (`GalaxyPage`)** : Graphe spatial de co-occurrence en session (Canvas 2D demand-driven, zéro boucle idle).
-9. **Recherche (`SearchPage`)** : Recherche plein-texte instantanée **SQLite FTS5 `unicode61`** (titres, artistes, albums et paroles indexées).
+9. **Recherche (`SearchPage`)** : Recherche intelligente multi-entités (**Titres, Artistes, Albums, Paroles**) combinant **SQLite FTS5 `unicode61`**, trigrammes, **tolérance aux fautes de frappe** (Damerau-Levenshtein + *« Vouliez-vous dire… »*), **auto-complétion** (`/api/v3/search/suggest`) et filtres (périmètre, genre, année, écoutes min, tri).
 10. **Wrapped (`WrappedPage`)** : Rétrospective éditoriale en 6 chapitres navigables au clavier (`←`/`→`) avec fiche collector.
 11. **Archives (`HubPage`)** : Parcours grand public simplifié (import multi-plateformes avec barre de progression temps réel, gestion des profils) + tiroir repliable *Options avancées / Technique* (matrice de capacités, fusion multi-profils ISRC ±180 s, Extension MV3, webhooks locaux, QR code LAN smartphone).
 
@@ -99,7 +99,7 @@ Tous chargés en *lazy-loading* (`React.lazy`) avec filtrage global multi-platef
 - **Enrichissement & Jobs** : `GET /api/enrichment/status`, `POST /api/enrichment/start|stop`, `GET /api/enrichment/stream` (SSE), `GET /api/v3/jobs/status`, `POST /api/v3/parquet/rebuild`.
 - **Profils & Vinyles V4** : `GET|POST /api/v4/profiles`, `POST /api/v4/profiles/{id}/activate`, `GET /api/v4/profile/capabilities`, `GET /api/v4/vinyl/crate`, `GET /api/v4/vinyl/{album_key}`, `POST /api/v4/vinyl/{album_key}/enrich`.
 - **Lecture & Temps Réel** : `GET /api/v4/playback/resolve`, `GET /api/v4/playback/apple-hints`, `POST /api/v4/playback/scrobble`, `WS /ws/bridge`, `WS /ws/now-playing`, `GET /api/v4/tracking/setup`, `POST /api/v4/webhooks/web-scrobbler`, `POST /apis/listenbrainz/1/submit-listens`.
-- **Analytique & Science** : `GET /api/filters`, `/api/analytics/{overview,tops/*,chronobiology,persona,behavior,galaxy,wrapped}`, `/api/detail/{artist,album,day}/*`, `/api/sessions`, `/api/history`, `/api/history/export.csv`, `/api/v3/search`, `/api/v3/analytics/{science,eras,compass,camelot,atlas,graph2d,iceberg}`, `/api/v3/games/blind-test`, `/api/v3/playlists/{generate,export}`.
+- **Analytique & Science** : `GET /api/filters`, `/api/analytics/{overview,tops/*,chronobiology,persona,behavior,galaxy,wrapped}`, `/api/detail/{artist,album,day}/*`, `/api/sessions`, `/api/history`, `/api/history/export.csv`, `/api/v3/search`, `/api/v3/search/suggest`, `/api/v3/analytics/{science,eras,compass,camelot,atlas,graph2d,iceberg}`, `/api/v3/games/blind-test`, `/api/v3/playlists/{generate,export}`.
 - **Connecteurs & Proxies** : `GET /api/external/{lyrics,artist-bio,track-bpm}`, `GET /api/artwork-proxy`, `GET /api/audio-proxy`.
 
 ---
@@ -118,5 +118,26 @@ npm run build
 cd frontend-v4.1
 npm run test:e2e
 ```
+
+---
+
+## 6. Correctifs & Évolutions V4.5 (Post-Release)
+
+- **Synchronisation Platine 3D depuis tous les onglets** (`frontend-v4.1/src/audio/playTrack.ts`, `backend/app/playback.py`) :
+  - Lancer un titre depuis *Synthèse*, *Classements*, *Recherche*, *Habitudes*, *Constellation* ou *Wrapped* charge automatiquement le vinyle correspondant sur le plateau (`onPlatter`), bascule sur la bonne face (`activeSideIndex` / `activeDiscIndex`) et positionne le bras sur le bon sillon (`nowPlaying.vinyl`).
+  - `/api/v4/playback/resolve` et `/api/v4/playback/apple-hints` retournent `album_key`, `track_key` et `duration_ms` (avec fallback par titre + artiste).
+- **Fiabilité & Consensus Multi-Pistes des Pochettes** (`backend/app/vinyl_enrichment.py`, `backend/app/analytics/overview.py`, `backend/app/enrichment.py`) :
+  - Les pochettes d'albums dans le bac (`/api/v4/vinyl/crate`), la prise en main (`/api/v4/vinyl/{album_key}`) et les classements (`get_top_albums`) sont validées par **consensus multi-pistes** : priorité aux URLs partagées par au moins 2 pistes (`COUNT(*) >= 2`), départagées par total d'écoutes (`SUM(total_plays) DESC`), afin d'éliminer les pochettes erronées isolées.
+  - `_search_itunes` exige désormais une similarité minimale sur l'artiste (`>= 0.4`) et l'album (`>= 0.35`) pour éviter les faux positifs sur les titres génériques (ex. `Intro`).
+  - Le cache de textures 3D (`PersistentStageCanvas.tsx`) est isolé par `${albumKey}::${artworkUrl}`.
+- **Affichage & Proxy des Pochettes** (`frontend-v4.1/src/components/ui.tsx`, `backend/app/main.py`, `backend/app/routers/proxy_router.py`) :
+  - Correction du composant `Cover` où les images déjà présentes en cache navigateur restaient bloquées à `opacity-0` (ex. Top 5 de *Classements*) et ajout d'un fallback automatique vers l'URL `https://` directe en cas d'erreur proxy.
+  - Pool HTTP `/api/artwork-proxy` élargi (`max_connections=32`, `pool=20s`) et cache disque étendu à 2 000 fichiers.
+- **Header 2 étages & Sources Épurées** (`frontend-v4.1/src/App.tsx`, `backend/app/profiles.py`, `backend/app/analytics/overview.py`) :
+  - Header structuré sur 2 étages à partir de `Enrich.` (Étage 1 : marque + 12 onglets ; Étage 2 : `Enrich.`, sources, année, `Filtres`, `FR|EN`, `h|min`) avec marges latérales équilibrées.
+  - Masquage des providers internes de lecture (`extension_bridge`, `preview_audio`, `youtube_iframe`) dans le sélecteur de sources du header.
+- **Recherche Intelligente, Auto-Complétion & Tolérance aux Fautes** (`backend/app/analytics/iceberg_games.py`, `backend/app/routers/analytics_router.py`, `frontend-v4.1/src/views/pages/SearchPage.tsx`) :
+  - Nouvel endpoint `GET /api/v3/search/suggest` (auto-complétion artistes/albums/titres/genres avec navigation clavier).
+  - Fallback fuzzy (Damerau-Levenshtein + `SequenceMatcher` insensible aux accents), suggestion *« Vouliez-vous dire… »*, résultats multi-entités (Artistes, Albums, Titres, Paroles) et filtres (périmètre, genre, année min/max, écoutes min, tri).
 
 Toute la documentation technique, les études de faisabilité 0 €, les plans d'architecture et les rapports de référence sont indexés dans **[docs/README.md](docs/README.md)**.
