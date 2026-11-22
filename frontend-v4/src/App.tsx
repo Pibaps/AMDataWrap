@@ -94,7 +94,7 @@ export const App: React.FC = () => {
       .catch(() => {});
   }, [filters.source_provider]);
 
-  const availablePlatforms = capabilities?.platforms?.length ? capabilities.platforms : [];
+  const availablePlatforms = (capabilities?.platforms ?? []).filter((p) => p !== "extension_bridge");
   const selectedPlatforms =
     !filters.source_provider || filters.source_provider === "all"
       ? availablePlatforms
