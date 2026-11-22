@@ -1,4 +1,9 @@
-# AMDataWrap launcher — Backend (:8000 LAN) + V1 (:5173) + V2 (:5174) + V3 (:5175) + V4 (:5176)
+# AMDataWrap launcher — Backend (:8000 LAN) + V4.1 Salon 3D (:5177, principal)
+# Utilisez `.\start.ps1 -Legacy` pour lancer également V1 (:5173), V2 (:5174), V3 (:5175) et V4.0 (:5176).
+param(
+    [switch]$Legacy
+)
+
 $ErrorActionPreference = "SilentlyContinue"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
@@ -14,37 +19,51 @@ if (Test-PortListening 8000) {
     Start-Process powershell -WorkingDirectory $root -ArgumentList "-NoExit", "-Command", ".\backend\.venv\Scripts\uvicorn.exe backend.app.main:app --host 0.0.0.0 --port 8000"
 }
 
-if (Test-PortListening 5173) {
-    Write-Host "V1 Classique deja actif sur http://localhost:5173" -ForegroundColor Yellow
+if (Test-PortListening 5177) {
+    Write-Host "V4.1 Salon 3D deja actif sur http://localhost:5177" -ForegroundColor Yellow
 } else {
-    Write-Host "Demarrage de V1 Classique (:5173)..." -ForegroundColor Green
-    Start-Process powershell -WorkingDirectory "$root\frontend" -ArgumentList "-NoExit", "-Command", "npm run dev"
+    Write-Host "Demarrage de V4.1 Salon 3D (:5177 LAN)..." -ForegroundColor DarkYellow
+    Start-Process powershell -WorkingDirectory "$root\frontend-v4.1" -ArgumentList "-NoExit", "-Command", "npm run dev"
 }
 
-if (Test-PortListening 5174) {
-    Write-Host "V2 Spatial 3D deja actif sur http://localhost:5174" -ForegroundColor Yellow
-} else {
-    Write-Host "Demarrage de V2 Spatial 3D (:5174)..." -ForegroundColor Magenta
-    Start-Process powershell -WorkingDirectory "$root\frontend-v2" -ArgumentList "-NoExit", "-Command", "npm run dev"
-}
+if ($Legacy) {
+    if (Test-PortListening 5173) {
+        Write-Host "V1 Classique deja actif sur http://localhost:5173" -ForegroundColor Yellow
+    } else {
+        Write-Host "Demarrage de V1 Classique (:5173)..." -ForegroundColor Green
+        Start-Process powershell -WorkingDirectory "$root\frontend" -ArgumentList "-NoExit", "-Command", "npm run dev"
+    }
 
-if (Test-PortListening 5175) {
-    Write-Host "V3 Continuum deja actif sur http://localhost:5175" -ForegroundColor Yellow
-} else {
-    Write-Host "Demarrage de V3 Continuum (:5175)..." -ForegroundColor Blue
-    Start-Process powershell -WorkingDirectory "$root\frontend-v3" -ArgumentList "-NoExit", "-Command", "npm run dev"
-}
+    if (Test-PortListening 5174) {
+        Write-Host "V2 Spatial 3D deja actif sur http://localhost:5174" -ForegroundColor Yellow
+    } else {
+        Write-Host "Demarrage de V2 Spatial 3D (:5174)..." -ForegroundColor Magenta
+        Start-Process powershell -WorkingDirectory "$root\frontend-v2" -ArgumentList "-NoExit", "-Command", "npm run dev"
+    }
 
-if (Test-PortListening 5176) {
-    Write-Host "V4 Vinyl Studio 3D deja actif sur http://localhost:5176" -ForegroundColor Yellow
-} else {
-    Write-Host "Demarrage de V4 Vinyl Studio 3D (:5176 LAN)..." -ForegroundColor Red
-    Start-Process powershell -WorkingDirectory "$root\frontend-v4" -ArgumentList "-NoExit", "-Command", "npm run dev"
+    if (Test-PortListening 5175) {
+        Write-Host "V3 Continuum deja actif sur http://localhost:5175" -ForegroundColor Yellow
+    } else {
+        Write-Host "Demarrage de V3 Continuum (:5175)..." -ForegroundColor Blue
+        Start-Process powershell -WorkingDirectory "$root\frontend-v3" -ArgumentList "-NoExit", "-Command", "npm run dev"
+    }
+
+    if (Test-PortListening 5176) {
+        Write-Host "V4.0 Vinyl Studio 3D deja actif sur http://localhost:5176" -ForegroundColor Yellow
+    } else {
+        Write-Host "Demarrage de V4.0 Vinyl Studio 3D (:5176 LAN)..." -ForegroundColor Red
+        Start-Process powershell -WorkingDirectory "$root\frontend-v4" -ArgumentList "-NoExit", "-Command", "npm run dev"
+    }
 }
 
 Start-Sleep -Seconds 2
-Start-Process "http://localhost:5176"
-Write-Host "V1 Classique       : http://localhost:5173" -ForegroundColor Green
-Write-Host "V2 Spatial 3D      : http://localhost:5174" -ForegroundColor Magenta
-Write-Host "V3 Continuum       : http://localhost:5175" -ForegroundColor Cyan
-Write-Host "V4 Vinyl Studio 3D : http://localhost:5176" -ForegroundColor Red
+Start-Process "http://localhost:5177"
+Write-Host ""
+Write-Host "Backend API        : http://127.0.0.1:8000" -ForegroundColor Cyan
+Write-Host "V4.1 Salon 3D      : http://localhost:5177  (Principal)" -ForegroundColor DarkYellow
+if ($Legacy) {
+    Write-Host "V4.0 Reference     : http://localhost:5176" -ForegroundColor Red
+    Write-Host "V3 Continuum       : http://localhost:5175" -ForegroundColor Blue
+    Write-Host "V2 Spatial 3D      : http://localhost:5174" -ForegroundColor Magenta
+    Write-Host "V1 Classique       : http://localhost:5173" -ForegroundColor Green
+}
