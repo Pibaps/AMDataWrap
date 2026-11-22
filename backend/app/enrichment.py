@@ -548,6 +548,10 @@ class EnrichmentManager:
                     s_song = similarity_score(song_name, item.get("trackName", ""))
                     s_album = similarity_score(album_name, item.get("collectionName", "")) if album_name else 0.5
                     s_art = similarity_score(known_artist, item.get("artistName", "")) if known_artist else 0.5
+                    if known_artist and s_art < 0.4:
+                        continue
+                    if album_name and album_name.lower() != "single / inconnu" and s_album < 0.35:
+                        continue
                     score = s_song * 0.55 + s_album * 0.30 + s_art * 0.15
                     if s_song >= 0.45 and score > best_score:
                         best_score = score
