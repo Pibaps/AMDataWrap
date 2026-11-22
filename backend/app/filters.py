@@ -88,28 +88,36 @@ def build_profile_id_clause(
     alias: str = "pe",
     *,
     include_exclusions: bool = True,
+    user_id: int = 1,
 ) -> tuple[str | None, list[Any]]:
     """Return pure-SQL clause + params scoping a table to a standard or merged profile."""
     if profile_id is None:
+        if user_id != 1:
+            return (
+                f"COALESCE({alias}.profile_id, 1) IN (SELECT p.id FROM profiles p WHERE COALESCE(p.user_id, 1) = ?)",
+                [user_id],
+            )
         return None, []
+    user_guard = " AND COALESCE(p.user_id, 1) = ?" if user_id != 1 else ""
     membership_sql = (
         f"COALESCE({alias}.profile_id, 1) IN ("
-        "SELECT p.id FROM profiles p WHERE p.id = ? AND p.kind = 'standard' "
+        f"SELECT p.id FROM profiles p WHERE p.id = ? AND p.kind = 'standard'{user_guard} "
         "UNION "
         "SELECT CAST(je.value AS INTEGER) FROM profiles p, "
         "json_each(CASE WHEN json_valid(p.merged_profile_ids_json) THEN p.merged_profile_ids_json ELSE '[]' END) je "
-        "WHERE p.id = ? AND p.kind = 'merged'"
+        f"WHERE p.id = ? AND p.kind = 'merged'{user_guard}"
         ")"
     )
+    base_params: list[Any] = [profile_id, user_id, profile_id, user_id] if user_id != 1 else [profile_id, profile_id]
     if not include_exclusions:
-        return membership_sql, [profile_id, profile_id]
+        return membership_sql, base_params
     full_sql = (
         f"({membership_sql} AND NOT EXISTS ("
         f"SELECT 1 FROM profile_merged_exclusions pme "
         f"WHERE pme.merged_profile_id = ? AND pme.play_event_id = {alias}.id"
         "))"
     )
-    return full_sql, [profile_id, profile_id, profile_id]
+    return full_sql, [*base_params, profile_id]
 
 
 @dataclass
@@ -142,6 +150,7 @@ class FilterParams:
     source_provider: str | None = None  # alias (apple_music, spotify, ...) or raw or comma-separated
     profile_id: int | None = None  # standard or merged profile id (None = legacy all-events)
     exclude_incognito: bool = False  # True excludes Spotify incognito_mode = 1 plays
+    user_id: int = 1  # V5 multi-tenant preparation hook (non-breaking default)
 
 
 def get_filter_params(
@@ -165,6 +174,7 @@ def get_filter_params(
     source_provider: str | None = Query(None),
     profile_id: int | None = Query(None),
     exclude_incognito: bool = Query(False),
+    user_id: int = Query(1, ge=1),
 ) -> FilterParams:
     return FilterParams(
         period_mode=period_mode,
@@ -187,6 +197,7 @@ def get_filter_params(
         source_provider=source_provider or None,
         profile_id=profile_id,
         exclude_incognito=bool(exclude_incognito),
+        user_id=user_id,
     )
 
 
@@ -266,9 +277,9 @@ def build_where_clause(
         clauses.append(f"COALESCE({pe_alias}.source_provider, 'apple_rgpd_zip') IN ({placeholders})")
         params.extend(providers)
 
-    # V4 Multi-profile (standard + merged with dedup exclusions)
+    # V4 Multi-profile (standard + merged with dedup exclusions) + V5 user_id hook
     prof_clause, prof_params = build_profile_id_clause(
-        f.profile_id, pe_alias, include_exclusions=True
+        f.profile_id, pe_alias, include_exclusions=True, user_id=f.user_id
     )
     if prof_clause:
         clauses.append(prof_clause)

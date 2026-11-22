@@ -9,7 +9,7 @@ from backend.app.main import app
 
 def test_openapi_schema_valid_and_v3_endpoints_present():
     schema = app.openapi()
-    assert schema["info"]["version"] == "3.0.0"
+    assert schema["info"]["version"] == "4.5.0"
     paths = schema["paths"]
     for required in (
         "/api/health",

@@ -4,6 +4,7 @@
 
 import React, { useMemo } from "react";
 import { API, apiGet, buildQueryParams, formatDateFr, formatHours, formatInt, formatMinutes, getActiveTimeUnit, type VinylDetail } from "../../api/client";
+import type { OverviewData } from "../../api/types";
 import { playTrack } from "../../audio/playTrack";
 import { BarList, Cover, Empty, ErrorNote, Loading, Page, PlayButton, Section, Stat } from "../../components/ui";
 import { useApi, withQs } from "../../hooks/useApi";
@@ -13,7 +14,7 @@ export const OverviewPage: React.FC = () => {
   const filters = useV4Store((s) => s.filters);
   const setActiveTab = useV4Store((s) => s.setActiveTab);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);
-  const { data, loading, error, reload } = useApi<any>(withQs(API.overview, qs));
+  const { data, loading, error, reload } = useApi<OverviewData>(withQs(API.overview, qs));
 
   if (loading && !data) {
     return (
@@ -305,12 +306,12 @@ export const OverviewPage: React.FC = () => {
       </div>
 
       {/* Technical & Context Breakdowns */}
-      {(breakdowns.devices?.length > 0 || breakdowns.containers?.length > 0 || breakdowns.audio_quality?.length > 0) && (
+      {((breakdowns.devices?.length ?? 0) > 0 || (breakdowns.containers?.length ?? 0) > 0 || (breakdowns.audio_quality?.length ?? 0) > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {breakdowns.devices?.length > 0 && (
+          {(breakdowns.devices?.length ?? 0) > 0 && (
             <Section title="Appareils d'écoute" kicker="Matériel">
               <BarList
-                items={breakdowns.devices.slice(0, 6).map((d: any, i: number) => ({
+                items={(breakdowns.devices ?? []).slice(0, 6).map((d, i) => ({
                   key: d.label || `dev-${i}`,
                   label: d.label || "Non spécifié",
                   value: d.total_ms || d.plays,
@@ -320,10 +321,10 @@ export const OverviewPage: React.FC = () => {
               />
             </Section>
           )}
-          {breakdowns.containers?.length > 0 && (
+          {(breakdowns.containers?.length ?? 0) > 0 && (
             <Section title="Contextes de lecture" kicker="Conteneurs">
               <BarList
-                items={breakdowns.containers.slice(0, 6).map((c: any, i: number) => ({
+                items={(breakdowns.containers ?? []).slice(0, 6).map((c, i) => ({
                   key: c.label || `cont-${i}`,
                   label: c.label || "Direct / Bibliothèque",
                   value: c.total_ms || c.plays,
@@ -333,10 +334,10 @@ export const OverviewPage: React.FC = () => {
               />
             </Section>
           )}
-          {breakdowns.audio_quality?.length > 0 && (
+          {(breakdowns.audio_quality?.length ?? 0) > 0 && (
             <Section title="Flux & qualité audio" kicker="Débit">
               <BarList
-                items={breakdowns.audio_quality.slice(0, 6).map((q: any, i: number) => ({
+                items={(breakdowns.audio_quality ?? []).slice(0, 6).map((q, i) => ({
                   key: q.label || `q-${i}`,
                   label: q.label,
                   value: q.total_ms || q.plays,

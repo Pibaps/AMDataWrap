@@ -4,6 +4,7 @@
 
 import React, { useMemo, useState } from "react";
 import { API, apiGet, buildQueryParams, formatDateFr, formatHours, formatInt, type VinylDetail } from "../../api/client";
+import type { TopsResponse } from "../../api/types";
 import { playTrack } from "../../audio/playTrack";
 import { Cover, Empty, ErrorNote, Loading, Page, PlayButton, Section, Tabs } from "../../components/ui";
 import { useApi, withQs } from "../../hooks/useApi";
@@ -33,7 +34,7 @@ export const TopsPage: React.FC = () => {
           : API.topGenres;
 
   const limit = kind === "genres" ? 40 : 50;
-  const { data, loading, error, reload } = useApi<any>(withQs(endpoint, qs, { limit }));
+  const { data, loading, error, reload } = useApi<TopsResponse<any>>(withQs(endpoint, qs, { limit }));
 
   const items: any[] = data?.items ?? [];
   const total: number = data?.total ?? items.length;

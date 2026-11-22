@@ -5,6 +5,7 @@
 
 import React, { useMemo } from "react";
 import { API, buildQueryParams, formatDateFr, formatHours, formatInt } from "../../api/client";
+import type { BehaviorData } from "../../api/types";
 import { playTrack } from "../../audio/playTrack";
 import { BarList, Cover, Empty, ErrorNote, InfoTooltip, Loading, Page, PlayButton, Section, Stat } from "../../components/ui";
 import { useApi, withQs } from "../../hooks/useApi";
@@ -14,7 +15,7 @@ export const BehaviorPage: React.FC = () => {
   const filters = useV4Store((s) => s.filters);
   const capabilities = useV4Store((s) => s.capabilities);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);
-  const { data, loading, error, reload } = useApi<any>(withQs(API.behavior, qs));
+  const { data, loading, error, reload } = useApi<BehaviorData>(withQs(API.behavior, qs));
 
   if (loading && !data) {
     return (
@@ -83,6 +84,7 @@ export const BehaviorPage: React.FC = () => {
               <PlayButton
                 size={34}
                 onClick={() =>
+                  loops.record_loop &&
                   playTrack({
                     song_name: loops.record_loop.song_name,
                     artist_name: loops.record_loop.artist_name,

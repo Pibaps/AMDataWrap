@@ -6,6 +6,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { API, buildQueryParams, formatHours, formatInt } from "../../api/client";
+import type { WrappedData } from "../../api/types";
 import { playTrack } from "../../audio/playTrack";
 import { Cover, Empty, ErrorNote, Loading, Page, PlayButton } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
@@ -14,7 +15,7 @@ import { useV4Store } from "../../store/useV4Store";
 export const WrappedPage: React.FC = () => {
   const filters = useV4Store((s) => s.filters);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);
-  const { data, loading, error, reload } = useApi<any>(`${API.wrapped}${qs}`);
+  const { data, loading, error, reload } = useApi<WrappedData>(`${API.wrapped}${qs}`);
   const [slide, setSlide] = useState(0);
 
   const slidesCount = 6;
@@ -150,7 +151,7 @@ export const WrappedPage: React.FC = () => {
                 <button
                   onClick={() =>
                     playTrack({
-                      song_name: topArtist.signature_song,
+                      song_name: topArtist.signature_song || topArtist.artist_name,
                       artist_name: topArtist.artist_name,
                       artwork_url: topArtist.artwork_url,
                       preview_url: topArtist.preview_url,

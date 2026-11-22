@@ -4,6 +4,7 @@
 
 import React, { useMemo } from "react";
 import { API, buildQueryParams, formatHours, formatInt } from "../../api/client";
+import type { PersonaData } from "../../api/types";
 import { RadarChart, VerticalBarsSvg } from "../../components/charts";
 import { BarList, Empty, ErrorNote, InfoTooltip, Loading, Page, Section, Stat } from "../../components/ui";
 import { useApi, withQs } from "../../hooks/useApi";
@@ -12,7 +13,7 @@ import { useV4Store } from "../../store/useV4Store";
 export const PersonaPage: React.FC = () => {
   const filters = useV4Store((s) => s.filters);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);
-  const { data, loading, error, reload } = useApi<any>(withQs(API.persona, qs));
+  const { data, loading, error, reload } = useApi<PersonaData>(withQs(API.persona, qs));
 
   if (loading && !data) {
     return (

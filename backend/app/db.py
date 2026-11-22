@@ -6,11 +6,13 @@ from typing import AsyncIterator
 
 import aiosqlite
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-DATA_DIR = ROOT_DIR / "data"
+from .config import ROOT_DIR as _CFG_ROOT_DIR, settings
+
+ROOT_DIR = _CFG_ROOT_DIR
+DATA_DIR = settings.db_path.parent
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "amdatawrap.sqlite"
-PARQUET_SNAPSHOT_PATH = DATA_DIR / "analytics_snapshot.parquet"
+DB_PATH = settings.db_path
+PARQUET_SNAPSHOT_PATH = settings.parquet_path
 
 
 def get_connection() -> sqlite3.Connection:
@@ -617,6 +619,10 @@ def _run_v4_migrations(conn: sqlite3.Connection):
     _ensure_column(conn, "play_events", "reason_start", "TEXT")
     _ensure_column(conn, "play_events", "skipped", "INTEGER")
     _ensure_column(conn, "play_events", "isrc", "TEXT")
+    _ensure_column(conn, "play_events", "source_batch_id", "INTEGER")
+
+    _ensure_column(conn, "profiles", "user_id", "INTEGER DEFAULT 1")
+    conn.execute("UPDATE profiles SET user_id = 1 WHERE user_id IS NULL")
 
     _ensure_column(conn, "lyric_events", "profile_id", "INTEGER DEFAULT 1")
     _ensure_column(conn, "search_events", "profile_id", "INTEGER DEFAULT 1")

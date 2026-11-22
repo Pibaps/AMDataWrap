@@ -8,6 +8,7 @@
 
 import React, { useMemo } from "react";
 import { API, buildQueryParams, formatHours, formatInt } from "../../api/client";
+import type { ChronoData } from "../../api/types";
 import { CalendarHeatmap, DayHourMatrix, VerticalBarsSvg } from "../../components/charts";
 import { BarList, Empty, ErrorNote, Loading, Page, Section, Stat } from "../../components/ui";
 import { useApi, withQs } from "../../hooks/useApi";
@@ -16,7 +17,7 @@ import { useV4Store } from "../../store/useV4Store";
 export const ChronoPage: React.FC = () => {
   const filters = useV4Store((s) => s.filters);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);
-  const { data, loading, error, reload } = useApi<any>(withQs(API.chrono, qs));
+  const { data, loading, error, reload } = useApi<ChronoData>(withQs(API.chrono, qs));
 
   const heatmap: any[] = data?.heatmap ?? [];
   const matrix: any[] = data?.matrix ?? [];

@@ -6,6 +6,7 @@
 
 import React, { useMemo } from "react";
 import { API, buildQueryParams, formatHoursNum, formatInt } from "../../api/client";
+import type { CamelotData, ErasData, ScienceData } from "../../api/types";
 import { BarList, Cover, Empty, ErrorNote, InfoTooltip, Loading, Page, Section, Stat } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
 import { useV4Store } from "../../store/useV4Store";
@@ -14,9 +15,9 @@ export const SciencePage: React.FC = () => {
   const filters = useV4Store((s) => s.filters);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);
 
-  const { data, loading, error, reload } = useApi<any>(`${API.science}${qs}`);
-  const { data: erasData } = useApi<any>(`${API.eras}${qs}`);
-  const { data: camelotData } = useApi<any>(`${API.camelot}${qs}`);
+  const { data, loading, error, reload } = useApi<ScienceData>(`${API.science}${qs}`);
+  const { data: erasData } = useApi<ErasData>(`${API.eras}${qs}`);
+  const { data: camelotData } = useApi<CamelotData>(`${API.camelot}${qs}`);
 
   if (loading && !data) {
     return (

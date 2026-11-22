@@ -8,6 +8,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API, buildQueryParams, formatHours, formatInt } from "../../api/client";
+import type { GalaxyData } from "../../api/types";
 import { playTrack } from "../../audio/playTrack";
 import { Cover, Empty, ErrorNote, Loading, Page, PlayButton } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
@@ -35,7 +36,7 @@ const WARM_PALETTE = ["#e8873e", "#c9a86b", "#d2553a", "#8fa27a", "#7e99a3", "#b
 export const GalaxyPage: React.FC = () => {
   const filters = useV4Store((s) => s.filters);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);
-  const { data, loading, error, reload } = useApi<any>(`${API.galaxy}${qs}`);
+  const { data, loading, error, reload } = useApi<GalaxyData>(`${API.galaxy}${qs}`);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [selectedGenre, setSelectedGenre] = useState<string>("all");
