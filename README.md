@@ -133,8 +133,10 @@ npm run test:e2e
 - **Affichage & Proxy des Pochettes** (`frontend-v4.1/src/components/ui.tsx`, `backend/app/main.py`, `backend/app/routers/proxy_router.py`) :
   - Correction du composant `Cover` où les images déjà présentes en cache navigateur restaient bloquées à `opacity-0` (ex. Top 5 de *Classements*) et ajout d'un fallback automatique vers l'URL `https://` directe en cas d'erreur proxy.
   - Pool HTTP `/api/artwork-proxy` élargi (`max_connections=32`, `pool=20s`) et cache disque étendu à 2 000 fichiers.
-- **Header 2 étages & Sources Épurées** (`frontend-v4.1/src/App.tsx`, `backend/app/profiles.py`, `backend/app/analytics/overview.py`) :
-  - Header structuré sur 2 étages à partir de `Enrich.` (Étage 1 : marque + 12 onglets ; Étage 2 : `Enrich.`, sources, année, `Filtres`, `FR|EN`, `h|min`) avec marges latérales équilibrées.
+- **Header 2 étages Responsive & Sources Épurées** (`frontend-v4.1/src/components/Header.tsx`, `frontend-v4.1/src/components/EnrichmentPill.tsx`, `frontend-v4.1/src/App.tsx`, `backend/app/profiles.py`, `backend/app/analytics/overview.py`) :
+  - Header strictement **2 étages** à toutes les largeurs d'écran (**zéro scrollbar horizontale**, jamais de 3e étage) via un composant dédié `Header.tsx` à paliers adaptatifs (*Priority+*) :
+    - **Étage 1 (navigation)** : 12 onglets en ligne sur desktop (`≥ 1280px`), 8/5/4 onglets + menu débordement **`Plus ▾`** (avec rappel de l'onglet actif) sur laptop/tablette (`lg`/`md`/`sm`), et bouton menu compact ouvrant une grille 2 colonnes sur mobile (`< 640px`).
+    - **Étage 2 (contrôles)** : `Enrich.` (popover aligné à gauche), sélecteur de sources en ligne sur `lg+` ou replié en menu **`Sources ▾`** sous `1024px`, sélecteur d'année, `Filtres`, `FR|EN` et `h|min` sur une seule ligne.
   - Masquage des providers internes de lecture (`extension_bridge`, `preview_audio`, `youtube_iframe`) dans le sélecteur de sources du header.
 - **Recherche Intelligente, Auto-Complétion & Tolérance aux Fautes** (`backend/app/analytics/iceberg_games.py`, `backend/app/routers/analytics_router.py`, `frontend-v4.1/src/views/pages/SearchPage.tsx`) :
   - Nouvel endpoint `GET /api/v3/search/suggest` (auto-complétion artistes/albums/titres/genres avec navigation clavier).

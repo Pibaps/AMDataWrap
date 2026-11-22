@@ -18,7 +18,10 @@ export const en: Record<TranslationKey, string> = {
   // Header & Filters
   "header.allPlatforms": "All",
   "header.allYears": "All years",
+  "header.allYearsShort": "Years",
   "header.filtersBtn": "Filters +",
+  "header.more": "More",
+  "header.sources": "Sources",
   "header.demoBanner": "Demo Mode active — isolated synthetic library",
   "header.exitDemo": "Exit demo",
 

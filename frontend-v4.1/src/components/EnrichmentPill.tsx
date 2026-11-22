@@ -96,7 +96,7 @@ export const EnrichmentPill: React.FC<{ hasData: boolean }> = ({ hasData }) => {
   };
 
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       <button
         type="button"
         onClick={() => {
@@ -105,10 +105,10 @@ export const EnrichmentPill: React.FC<{ hasData: boolean }> = ({ hasData }) => {
         }}
         data-testid="enrichment-status-pill"
         title="Statut de l'enrichissement et de l'Atlas"
-        className="inline-flex items-center gap-1.5 px-2 py-1 rounded border border-line-2 bg-bg-3 text-[11px] num text-ink-2 hover:text-ink hover:border-amber/60 transition-colors"
+        className="inline-flex items-center gap-1.5 h-7 px-2 rounded border border-line-2 bg-bg-3 text-[11px] num text-ink-2 hover:text-ink hover:border-amber/60 whitespace-nowrap transition-colors"
       >
         <span
-          className={`w-1.5 h-1.5 rounded-full ${
+          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
             isRunning ? "bg-amber animate-pulse" : isIncomplete ? "bg-brass" : "bg-moss"
           }`}
         />
@@ -116,7 +116,7 @@ export const EnrichmentPill: React.FC<{ hasData: boolean }> = ({ hasData }) => {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 z-50 w-72 bg-bg-2 border border-line-2 rounded-lg shadow-2xl p-3.5 text-xs space-y-3">
+        <div className="absolute left-0 top-full mt-1.5 z-50 w-[min(18rem,calc(100vw-1.5rem))] bg-bg-2 border border-line-2 rounded-lg shadow-2xl p-3.5 text-xs space-y-3">
           <div className="flex items-center justify-between">
             <span className="font-semibold text-ink flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-amber" />

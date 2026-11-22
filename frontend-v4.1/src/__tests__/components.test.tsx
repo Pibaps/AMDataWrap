@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { FilterDrawer } from "../components/FilterDrawer";
+import { Header, NAV_TAB_IDS } from "../components/Header";
 import { LyricsPanel } from "../components/LyricsPanel";
 import { Cover } from "../components/ui";
 import { WelcomeOverlay } from "../components/WelcomeOverlay";
@@ -47,5 +48,59 @@ describe("V4.5 UI components", () => {
   it("LyricsPanel renders standby message when open with no track", () => {
     render(<LyricsPanel open={true} onClose={vi.fn()} />);
     expect(screen.getByTestId("lyrics-panel")).toBeInTheDocument();
+  });
+
+  it("Header renders all 12 tabs inline on xl desktop without overflow menu", () => {
+    Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 1440 });
+    render(
+      <Header
+        hasData={false}
+        availablePlatforms={["apple_music", "spotify"]}
+        selectedPlatforms={["apple_music", "spotify"]}
+        isAllPlatforms={true}
+        platformLabels={{ apple_music: "Apple Music", spotify: "Spotify" }}
+        activePlatformBanner="APPLE MUSIC + SPOTIFY"
+        availableYears={[2025, 2026]}
+        filtersOpen={false}
+        activeAdvancedCount={0}
+        onTogglePlatform={vi.fn()}
+        onToggleFilters={vi.fn()}
+      />,
+    );
+    for (const id of NAV_TAB_IDS) {
+      expect(screen.getByTestId(`nav-${id}`)).toBeInTheDocument();
+    }
+    expect(screen.queryByTestId("nav-more-toggle")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sources-dropdown-toggle")).not.toBeInTheDocument();
+  });
+
+  it("Header collapses overflow tabs and platform sources into popovers on mobile without scrollbars", () => {
+    Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 390 });
+    render(
+      <Header
+        hasData={false}
+        availablePlatforms={["apple_music", "spotify", "youtube_music"]}
+        selectedPlatforms={["apple_music", "spotify", "youtube_music"]}
+        isAllPlatforms={true}
+        platformLabels={{ apple_music: "Apple Music", spotify: "Spotify", youtube_music: "YouTube Music" }}
+        activePlatformBanner="APPLE MUSIC + SPOTIFY + YOUTUBE MUSIC"
+        availableYears={[2025, 2026]}
+        filtersOpen={false}
+        activeAdvancedCount={1}
+        onTogglePlatform={vi.fn()}
+        onToggleFilters={vi.fn()}
+      />,
+    );
+    const moreBtn = screen.getByTestId("nav-more-toggle");
+    expect(moreBtn).toBeInTheDocument();
+    expect(screen.queryByTestId("nav-overview")).not.toBeInTheDocument();
+    fireEvent.click(moreBtn);
+    expect(screen.getByTestId("nav-more-menu")).toBeInTheDocument();
+    expect(screen.getByTestId("nav-overview")).toBeInTheDocument();
+
+    const sourcesBtn = screen.getByTestId("sources-dropdown-toggle");
+    expect(sourcesBtn).toBeInTheDocument();
+    fireEvent.click(sourcesBtn);
+    expect(screen.getByTestId("sources-dropdown-menu")).toBeInTheDocument();
   });
 });

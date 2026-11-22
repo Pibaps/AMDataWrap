@@ -16,7 +16,10 @@ export const fr = {
   // Header & Filters
   "header.allPlatforms": "Toutes",
   "header.allYears": "Toutes années",
+  "header.allYearsShort": "Années",
   "header.filtersBtn": "Filtres +",
+  "header.more": "Plus",
+  "header.sources": "Sources",
   "header.demoBanner": "Mode Démo actif — bibliothèque synthétique isolée",
   "header.exitDemo": "Quitter la démo",
 

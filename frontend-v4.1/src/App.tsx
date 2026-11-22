@@ -12,14 +12,13 @@ import {
   API,
   apiGet,
   apiPost,
-  type NavTab,
   type ProfileCapabilities,
   type ProfileItem,
 } from "./api/client";
 import type { FilterOptionsData } from "./api/types";
 import { DetailDrawer } from "./components/DetailDrawer";
-import { EnrichmentPill } from "./components/EnrichmentPill";
 import { FilterDrawer } from "./components/FilterDrawer";
+import { Header } from "./components/Header";
 import { HybridPlaybackDeck } from "./components/HybridPlaybackDeck";
 import { Loading } from "./components/ui";
 import { WelcomeOverlay } from "./components/WelcomeOverlay";
@@ -40,30 +39,12 @@ const SearchPage = lazy(() => import("./views/pages/SearchPage").then((m) => ({ 
 const WrappedPage = lazy(() => import("./views/pages/WrappedPage").then((m) => ({ default: m.WrappedPage })));
 const HubPage = lazy(() => import("./views/pages/HubPage").then((m) => ({ default: m.HubPage })));
 
-const NAV_TAB_IDS: NavTab[] = [
-  "studio",
-  "overview",
-  "tops",
-  "chrono",
-  "persona",
-  "behavior",
-  "science",
-  "atlas",
-  "galaxy",
-  "search",
-  "wrapped",
-  "hub",
-];
-
 export const App: React.FC = () => {
-  const { t, locale } = useT();
+  const { t } = useT();
   const activeTab = useV4Store((s) => s.activeTab);
-  const setActiveTab = useV4Store((s) => s.setActiveTab);
   const filters = useV4Store((s) => s.filters);
   const setFilters = useV4Store((s) => s.setFilters);
   const timeUnit = useV4Store((s) => s.timeUnit);
-  const setTimeUnit = useV4Store((s) => s.setTimeUnit);
-  const setLocale = useV4Store((s) => s.setLocale);
   const capabilities = useV4Store((s) => s.capabilities);
   const profiles = useV4Store((s) => s.profiles);
   const activeProfileId = useV4Store((s) => s.activeProfileId);
@@ -190,168 +171,20 @@ export const App: React.FC = () => {
       {/* SINGLE PERSISTENT 3D LISTENING ROOM CANVAS (pauses RAF automatically off studio tab) */}
       <PersistentStageCanvas />
 
-      {/* Clean Two-Tier Header: Row 1 (Brand + 12 Tabs), Row 2 (Enrich. + Filters & Controls) */}
-      <header className="sticky top-0 z-30 bg-bg-2/95 border-b border-line px-4 sm:px-6 lg:px-8 py-2">
-        <div className="max-w-[1440px] mx-auto flex flex-col gap-1.5">
-          {/* Tier 1: Brand + Navigation Tabs */}
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-baseline gap-2.5 shrink-0">
-              <button
-                onClick={() => setActiveTab("studio")}
-                className="font-display text-lg font-[600] tracking-tight text-ink hover:text-amber transition-colors"
-              >
-                AMDataWrap
-              </button>
-              <span className="kicker hidden lg:inline whitespace-nowrap">
-                {activePlatformBanner} · SALON 3D
-              </span>
-            </div>
-
-            <nav
-              aria-label="Navigation AMDataWrap V4"
-              className="flex items-center gap-1 overflow-x-auto max-w-full py-0.5"
-            >
-              {NAV_TAB_IDS.map((id) => {
-                const active = activeTab === id;
-                return (
-                  <button
-                    key={id}
-                    onClick={() => setActiveTab(id)}
-                    data-testid={`nav-${id}`}
-                    className={`px-2.5 py-1 rounded text-xs font-medium whitespace-nowrap transition-colors ${
-                      active
-                        ? "bg-amber text-[#1a0f07] font-semibold"
-                        : "text-ink-2 hover:text-ink hover:bg-bg-3"
-                    }`}
-                  >
-                    {t(`nav.${id}`)}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-
-          {/* Tier 2: Enrich. + Platform Sources + Year / Filters / Lang / Unit */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-line/60 text-xs">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <EnrichmentPill hasData={hasData} />
-              {availablePlatforms.length > 1 && (
-                <div
-                  className="flex items-center gap-1 bg-bg-3 border border-line-2 rounded p-0.5"
-                  role="group"
-                  aria-label="Filtre plateformes (combinaisons multiples)"
-                  data-testid="platform-filter"
-                >
-                  <button
-                    type="button"
-                    onClick={() => setFilters({ source_provider: "all", year: "all" })}
-                    className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
-                      isAllPlatforms ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink"
-                    }`}
-                  >
-                    {t("header.allPlatforms")}
-                  </button>
-                  {availablePlatforms.map((p) => {
-                    const active = !isAllPlatforms && selectedPlatforms.includes(p);
-                    return (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => togglePlatform(p)}
-                        title="Cliquer pour activer/désactiver cette plateforme (combinaisons possibles)"
-                        className={`px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap transition-colors ${
-                          active ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink hover:bg-bg-4"
-                        }`}
-                      >
-                        {PLATFORM_LABELS[p] || p.replace(/_/g, " ")}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1.5">
-            <select
-              value={filters.year}
-              onChange={(e) => setFilters({ year: e.target.value })}
-              aria-label="Filtre année"
-              className="field text-xs"
-            >
-              <option value="all">{t("header.allYears")}</option>
-              {availableYears.map((y: number) => (
-                <option key={y} value={String(y)}>
-                  {y}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              data-testid="filters-toggle"
-              onClick={() => setFiltersOpen((v) => !v)}
-              className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
-                filtersOpen || activeAdvancedCount > 0
-                  ? "bg-amber/15 border-amber/40 text-amber"
-                  : "bg-bg-3 border-line-2 text-ink-2 hover:text-ink"
-              }`}
-            >
-              {t("header.filtersBtn")}
-              {activeAdvancedCount > 0 ? ` (${activeAdvancedCount})` : ""}
-            </button>
-            <div
-              className="flex items-center gap-0.5 bg-bg-3 border border-line-2 rounded p-0.5"
-              role="group"
-              aria-label="Language"
-              data-testid="lang-toggle"
-            >
-              <button
-                type="button"
-                onClick={() => setLocale("fr")}
-                className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
-                  locale === "fr" ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink"
-                }`}
-              >
-                FR
-              </button>
-              <button
-                type="button"
-                onClick={() => setLocale("en")}
-                className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
-                  locale === "en" ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink"
-                }`}
-              >
-                EN
-              </button>
-            </div>
-            <div
-              className="flex items-center gap-0.5 bg-bg-3 border border-line-2 rounded p-0.5"
-              role="group"
-              aria-label="Unité de durée"
-              data-testid="time-unit-toggle"
-            >
-              <button
-                type="button"
-                onClick={() => setTimeUnit("hours")}
-                className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
-                  timeUnit === "hours" ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink"
-                }`}
-              >
-                h
-              </button>
-              <button
-                type="button"
-                onClick={() => setTimeUnit("minutes")}
-                className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
-                  timeUnit === "minutes" ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink"
-                }`}
-              >
-                min
-              </button>
-            </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Strict Two-Tier Responsive Header (zero scrollbars, max 2 tiers at all widths) */}
+      <Header
+        hasData={hasData}
+        availablePlatforms={availablePlatforms}
+        selectedPlatforms={selectedPlatforms}
+        isAllPlatforms={isAllPlatforms}
+        platformLabels={PLATFORM_LABELS}
+        activePlatformBanner={activePlatformBanner}
+        availableYears={availableYears}
+        filtersOpen={filtersOpen}
+        activeAdvancedCount={activeAdvancedCount}
+        onTogglePlatform={togglePlatform}
+        onToggleFilters={() => setFiltersOpen((v) => !v)}
+      />
 
       <FilterDrawer
         open={filtersOpen}
