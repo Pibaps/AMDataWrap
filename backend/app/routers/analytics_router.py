@@ -58,8 +58,11 @@ def galaxy_endpoint(
 
 
 @analytics_router.get("/api/filters")
-def filters_endpoint():
-    return get_filter_options()
+def filters_endpoint(
+    profile_id: int | None = Query(None),
+    source_provider: str | None = Query(None),
+):
+    return get_filter_options(profile_id=profile_id, source_provider=source_provider)
 
 
 @analytics_router.get("/api/analytics/overview")

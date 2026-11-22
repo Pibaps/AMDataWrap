@@ -87,12 +87,22 @@ export function resolveTrack(req: PlayRequest): Promise<ResolveOut> {
   if (!p) {
     const qs = new URLSearchParams({ song: req.song_name, artist: req.artist_name || "", album: req.album_name || "" });
     if (req.track_key) qs.set("track_key", req.track_key);
-    p = apiGet<ResolveOut>(`${API.resolve}?${qs.toString()}`).catch(() => ({
-      ok: false,
-      video_id: null,
-      preview_url: null,
-      artwork_url: null,
-    }));
+    p = apiGet<ResolveOut>(`${API.resolve}?${qs.toString()}`)
+      .then((res) => {
+        if (!res.ok && !res.video_id && !res.preview_url) {
+          resolveCache.delete(k);
+        }
+        return res;
+      })
+      .catch(() => {
+        resolveCache.delete(k);
+        return {
+          ok: false,
+          video_id: null,
+          preview_url: null,
+          artwork_url: null,
+        };
+      });
     resolveCache.set(k, p);
   }
   return p;

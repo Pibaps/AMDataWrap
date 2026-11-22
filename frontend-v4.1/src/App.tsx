@@ -9,6 +9,7 @@
 
 import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { API, apiGet, type NavTab, type ProfileCapabilities, type ProfileItem } from "./api/client";
+import { EnrichmentPill } from "./components/EnrichmentPill";
 import { HybridPlaybackDeck } from "./components/HybridPlaybackDeck";
 import { Loading } from "./components/ui";
 import { PersistentStageCanvas } from "./scene/PersistentStageCanvas";
@@ -53,6 +54,7 @@ export const App: React.FC = () => {
   const setProfilesData = useV4Store((s) => s.setProfilesData);
 
   const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [hasData, setHasData] = useState<boolean>(true);
 
   const PLATFORM_LABELS: Record<string, string> = {
     apple_music: "Apple Music",
@@ -64,13 +66,20 @@ export const App: React.FC = () => {
 
   const loadProfilesAndCapabilities = useCallback(async () => {
     try {
-      const profRes = await apiGet<{ profiles: ProfileItem[]; active_profile_id: number | null }>(API.profiles);
+      const [profRes, healthRes] = await Promise.all([
+        apiGet<{ profiles: ProfileItem[]; active_profile_id: number | null }>(API.profiles),
+        apiGet<{ has_data: boolean }>(API.health).catch(() => ({ has_data: true })),
+      ]);
+      setHasData(Boolean(healthRes?.has_data));
       const activeId = profRes.active_profile_id ?? profRes.profiles?.[0]?.id ?? null;
+      const fltParams = new URLSearchParams();
+      if (activeId) fltParams.set("profile_id", String(activeId));
+      const fltQs = fltParams.toString() ? `?${fltParams.toString()}` : "";
       const [caps, flt] = await Promise.all([
         apiGet<ProfileCapabilities>(`${API.capabilities}${activeId ? `?profile_id=${activeId}` : ""}`).catch(
           () => null
         ),
-        apiGet<{ years?: number[] }>(API.filters).catch(() => ({ years: [] })),
+        apiGet<{ years?: number[] }>(`${API.filters}${fltQs}`).catch(() => ({ years: [] })),
       ]);
       setProfilesData(profRes.profiles || [], activeId, caps);
       if (Array.isArray(flt?.years)) setAvailableYears(flt.years);
@@ -84,15 +93,18 @@ export const App: React.FC = () => {
   }, [loadProfilesAndCapabilities]);
 
   useEffect(() => {
-    const qs = filters.source_provider && filters.source_provider !== "all"
-      ? `?source_provider=${encodeURIComponent(filters.source_provider)}`
-      : "";
+    const fltParams = new URLSearchParams();
+    if (filters.profile_id != null) fltParams.set("profile_id", String(filters.profile_id));
+    if (filters.source_provider && filters.source_provider !== "all") {
+      fltParams.set("source_provider", filters.source_provider);
+    }
+    const qs = fltParams.toString() ? `?${fltParams.toString()}` : "";
     apiGet<{ years?: number[] }>(`${API.filters}${qs}`)
       .then((flt) => {
         if (Array.isArray(flt?.years)) setAvailableYears(flt.years);
       })
       .catch(() => {});
-  }, [filters.source_provider]);
+  }, [filters.profile_id, filters.source_provider]);
 
   const availablePlatforms = capabilities?.platforms?.length ? capabilities.platforms : [];
   const selectedPlatforms =
@@ -171,6 +183,7 @@ export const App: React.FC = () => {
           </nav>
 
           <div className="flex flex-wrap items-center gap-1.5 text-xs shrink-0">
+            <EnrichmentPill hasData={hasData} />
             {availablePlatforms.length > 1 && (
               <div
                 className="flex items-center gap-1 bg-bg-3 border border-line-2 rounded p-0.5"

@@ -360,6 +360,16 @@ class EnrichmentManager:
                     if not match:
                         match = await self._search_deezer(client, tr["song_name"], tr["album_name"], tr["artist_name"])
                         source = "deezer_search"
+                    if not match or not match.get("artwork_url"):
+                        caa = await self._search_cover_art_archive(
+                            client, tr["song_name"], tr["album_name"], (match or {}).get("artist") or tr["artist_name"]
+                        )
+                        if caa:
+                            if match:
+                                match["artwork_url"] = caa["artwork_url"]
+                            else:
+                                match = caa
+                                source = "cover_art_archive"
 
                     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                     with db_session() as conn:
@@ -593,13 +603,78 @@ class EnrichmentManager:
                     "genre": None,
                     "release_year": None,
                     "release_date": None,
-                    "artwork_url": alb_obj.get("cover_big") or alb_obj.get("cover_medium"),
+                    "artwork_url": alb_obj.get("cover_xl") or alb_obj.get("cover_big") or alb_obj.get("cover_medium"),
                     "preview_url": best.get("preview") or None,
                     "itunes_track_id": None,
                 }
         except Exception:
             return None
         return None
+
+    async def _search_cover_art_archive(
+        self,
+        client: httpx.AsyncClient,
+        song_name: str,
+        album_name: str | None,
+        known_artist: str | None,
+    ) -> dict[str, Any] | None:
+        """Fallback #3: MusicBrainz release-group -> Cover Art Archive front-500."""
+        query_album = album_name if album_name and album_name.lower() != "single / inconnu" else song_name
+        if not query_album:
+            return None
+        q = f'releasegroup:"{query_album}"'
+        if known_artist and known_artist.lower() != "artiste inconnu":
+            q += f' AND artist:"{known_artist}"'
+        try:
+            resp = await client.get(
+                "https://musicbrainz.org/ws/2/release-group/",
+                params={"query": q, "fmt": "json", "limit": 2},
+                headers={"User-Agent": "AMDataWrap/4.5.0 (https://github.com/Pibaps/AMDataWrap)"},
+            )
+            if resp.status_code != 200:
+                return None
+            groups = resp.json().get("release-groups") or []
+            if not groups:
+                return None
+            rg_id = groups[0].get("id")
+            if not rg_id:
+                return None
+            caa_url = f"https://coverartarchive.org/release-group/{rg_id}/front-500"
+            head = await client.head(caa_url, follow_redirects=True)
+            if head.status_code in (200, 302, 307):
+                return {
+                    "artist": primary_artist_name(known_artist) if known_artist else None,
+                    "album": query_album,
+                    "genre": None,
+                    "release_year": None,
+                    "release_date": None,
+                    "artwork_url": str(head.url) if head.status_code == 200 else caa_url,
+                    "preview_url": None,
+                    "itunes_track_id": None,
+                }
+        except Exception:
+            return None
+        return None
+
+    def queue_repair_missing(self) -> int:
+        """Re-queue tracks missing artwork, missing/expired Deezer previews, or previously not_found."""
+        with db_session() as conn:
+            cur = conn.execute(
+                """
+                UPDATE tracks_catalog
+                SET enrichment_status = 'local_only'
+                WHERE artwork_url IS NULL
+                   OR artwork_url = ''
+                   OR preview_url IS NULL
+                   OR preview_url = ''
+                   OR preview_url LIKE '%dzcdn.net%'
+                   OR enrichment_status = 'not_found'
+                """
+            )
+            queued = int(cur.rowcount or 0)
+            conn.execute("DELETE FROM enrichment_cache WHERE status = 'not_found'")
+        self.get_snapshot()
+        return queued
 
 
 enrichment_manager = EnrichmentManager()

@@ -89,13 +89,29 @@ export const Cover: React.FC<{ url?: string | null; alt?: string; size?: number;
   rounded = false,
 }) => {
   const src = coverUrl(url, size <= 64 ? 120 : size <= 160 ? 300 : 600);
+  const [failed, setFailed] = React.useState(false);
+  const [loaded, setLoaded] = React.useState(false);
+
+  React.useEffect(() => {
+    setFailed(false);
+    setLoaded(false);
+  }, [src]);
+
   return (
     <div
       className={`shrink-0 overflow-hidden bg-bg-4 ${rounded ? "rounded-full" : "rounded-[3px]"} ${className}`}
       style={{ width: size, height: size }}
     >
-      {src ? (
-        <img src={src} alt={alt} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+      {src && !failed ? (
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+          className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+        />
       ) : (
         <div className="w-full h-full flex items-center justify-center text-ink-3">
           <Disc3 style={{ width: size * 0.45, height: size * 0.45 }} />

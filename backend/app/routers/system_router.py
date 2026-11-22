@@ -147,6 +147,16 @@ async def enrichment_stop():
     return enrichment_manager.get_snapshot()
 
 
+@system_router.post("/api/v4/enrichment/repair")
+async def enrichment_repair():
+    """Re-queue tracks with missing artwork, missing/expired previews, or prior not_found."""
+    await enrichment_manager.stop()
+    queued = await asyncio.to_thread(enrichment_manager.queue_repair_missing)
+    if queued > 0:
+        enrichment_manager.start(force_restart=True)
+    return {"ok": True, "queued_tracks": queued, "enrichment": enrichment_manager.get_snapshot()}
+
+
 @system_router.get("/api/enrichment/stream")
 async def enrichment_stream():
     queue = enrichment_manager.subscribe()

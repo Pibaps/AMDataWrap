@@ -11,7 +11,7 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { Check, ChevronDown, Clock, Copy, GitMerge, Plus, Smartphone, Upload, Wifi } from "lucide-react";
+import { Check, ChevronDown, Clock, Copy, GitMerge, Plus, RefreshCw, Smartphone, Upload, Wifi } from "lucide-react";
 import { API, apiGet, apiPost, formatInt, type ProfileItem } from "../../api/client";
 import { Page, Section } from "../../components/ui";
 import { invalidateApiCache } from "../../hooks/useApi";
@@ -45,6 +45,26 @@ export const HubPage: React.FC<HubPageProps> = ({ onRefreshProfiles }) => {
 
   const [trackingSetup, setTrackingSetup] = useState<any | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [repairMsg, setRepairMsg] = useState<string | null>(null);
+  const [repairing, setRepairing] = useState(false);
+
+  const handleRepairEnrichment = async () => {
+    setRepairing(true);
+    setRepairMsg(null);
+    try {
+      const res = await apiPost<{ ok: boolean; queued_tracks: number }>("/api/v4/enrichment/repair");
+      invalidateApiCache();
+      setRepairMsg(
+        res.queued_tracks > 0
+          ? `${formatInt(res.queued_tracks)} titres remis en file pour réparation des pochettes et extraits.`
+          : "Toutes les pochettes et extraits sont déjà complets."
+      );
+    } catch (err: any) {
+      setRepairMsg(`Erreur : ${err.message}`);
+    } finally {
+      setRepairing(false);
+    }
+  };
 
   useEffect(() => {
     apiGet<{ platforms: any[] }>(API.importGuides)
@@ -366,6 +386,20 @@ export const HubPage: React.FC<HubPageProps> = ({ onRefreshProfiles }) => {
                 )}
               </div>
             ))}
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-line flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={handleRepairEnrichment}
+              disabled={repairing}
+              data-testid="repair-enrichment-btn"
+              className="btn text-xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${repairing ? "animate-spin" : ""}`} />
+              Réparer / Rafraîchir les pochettes &amp; extraits manquants
+            </button>
+            {repairMsg && <span className="text-[11.5px] text-amber num">{repairMsg}</span>}
           </div>
         </Section>
 

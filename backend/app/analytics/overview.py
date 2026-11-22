@@ -5,9 +5,12 @@ from ..db import db_session
 from ..filters import FilterParams, build_where_clause, metric_order_sql
 
 
-def get_filter_options(profile_id: int | None = None) -> dict[str, Any]:
+def get_filter_options(
+    profile_id: int | None = None,
+    source_provider: str | None = None,
+) -> dict[str, Any]:
     pe_where, pe_params = build_where_clause(
-        FilterParams(profile_id=profile_id),
+        FilterParams(profile_id=profile_id, source_provider=source_provider),
         include_skip_filter=False,
     )
     with db_session() as conn:

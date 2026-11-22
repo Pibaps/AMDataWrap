@@ -343,6 +343,19 @@ def persist_normalized_events(
                 list(new_tracks.values()),
             )
 
+        source_id = record_profile_source(
+            conn,
+            target_profile_id,
+            source_provider=source_provider,
+            filename=filename,
+            file_sha256=file_sha256,
+            events_count=inserted,
+            unique_tracks=len(seen_tracks),
+            min_date=min_date,
+            max_date=max_date,
+            metadata=metadata,
+        )
+
         if play_rows:
             conn.executemany(
                 """
@@ -354,7 +367,7 @@ def persist_normalized_events(
                     device_label, device_os, offline, shuffle_play, audio_quality,
                     session_id, source_provider, source_priority, source_event_id,
                     canonical_track_key, duration_is_estimated, dedup_fingerprint,
-                    profile_id, incognito_mode, reason_start, skipped, isrc
+                    profile_id, incognito_mode, reason_start, skipped, isrc, source_batch_id
                 ) VALUES (
                     ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?,
@@ -363,10 +376,10 @@ def persist_normalized_events(
                     ?, ?, ?, ?, ?,
                     ?, ?, ?, ?,
                     ?, ?, ?,
-                    ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?
                 )
                 """,
-                play_rows,
+                [(*row, source_id) for row in play_rows],
             )
 
         if track_increments:
@@ -398,19 +411,6 @@ def persist_normalized_events(
                 """,
                 [(tk, prov, eid, url, now_iso) for tk, prov, eid, url in mapping_rows],
             )
-
-        source_id = record_profile_source(
-            conn,
-            target_profile_id,
-            source_provider=source_provider,
-            filename=filename,
-            file_sha256=file_sha256,
-            events_count=inserted,
-            unique_tracks=len(seen_tracks),
-            min_date=min_date,
-            max_date=max_date,
-            metadata=metadata,
-        )
 
         # Keep import_meta up to date so legacy V1/V2/V3 checks see data
         totals = conn.execute(

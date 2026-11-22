@@ -37,6 +37,10 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+_HARD_PENALTY_KEYWORDS = ("karaoke", "karaoké", "tribute", "cover", "parody", "reaction", "tutorial")
+_SOFT_PENALTY_KEYWORDS = ("live", "concert", "remix", "slowed", "sped up", "nightcore", "8d", "acoustic", "instrumental")
+
+
 def _search_ytmusic_sync(
     query: str, song_name: str, artist_name: str, album_name: str = ""
 ) -> dict[str, Any] | None:
@@ -45,10 +49,11 @@ def _search_ytmusic_sync(
         from ytmusicapi import YTMusic  # type: ignore
 
         ytm = YTMusic()
-        results = ytm.search(query, filter="songs", limit=6) or []
+        results = ytm.search(query, filter="songs", limit=8) or []
         best = None
-        best_score = 0.0
+        best_score = -999.0
         clean_album = album_name if album_name and album_name.lower() != "single / inconnu" else ""
+        req_context = f"{song_name} {clean_album}".lower()
         for item in results:
             vid = item.get("videoId")
             if not vid:
@@ -64,6 +69,15 @@ def _search_ytmusic_sync(
                 )
             else:
                 score = similarity_score(song_name, title) * 0.65 + similarity_score(artist_name, artists) * 0.35
+
+            cand_text = f"{title} {alb} {artists}".lower()
+            for kw in _HARD_PENALTY_KEYWORDS:
+                if kw in cand_text and kw not in req_context:
+                    score -= 0.45
+            for kw in _SOFT_PENALTY_KEYWORDS:
+                if kw in cand_text and kw not in req_context:
+                    score -= 0.30
+
             if score > best_score:
                 best_score = score
                 best = {
@@ -226,6 +240,80 @@ async def api_resolve_playback(
         "url": None,
         "preview_url": preview_url,
         "artwork_url": artwork_url,
+    }
+
+
+@playback_router.get("/api/v4/playback/refresh-preview")
+async def api_refresh_preview(
+    song: str = Query(..., min_length=1),
+    artist: str = Query(""),
+    album: str = Query(""),
+    track_key: str | None = Query(None),
+) -> dict[str, Any]:
+    """Transparently refresh an expired 30s preview URL (preferring non-expiring iTunes over Deezer)."""
+    tkey = track_key or make_track_key(song, album or "Single / Inconnu")
+    clean_artist = artist if artist and artist.lower() != "artiste inconnu" else ""
+    term = f"{clean_artist} {song}".strip()
+    preview_url: str | None = None
+    artwork_url: str | None = None
+    source: str | None = None
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                "https://itunes.apple.com/search",
+                params={"term": term[:140], "entity": "song", "country": "fr", "limit": 5},
+            )
+            if resp.status_code == 200:
+                items = resp.json().get("results") or []
+                best_item = None
+                best_score = 0.0
+                for it in items:
+                    sc = similarity_score(song, it.get("trackName") or "") * 0.65
+                    if clean_artist:
+                        sc += similarity_score(clean_artist, it.get("artistName") or "") * 0.35
+                    else:
+                        sc += 0.25
+                    if it.get("previewUrl") and sc > best_score:
+                        best_score = sc
+                        best_item = it
+                if best_item and best_score >= 0.45:
+                    preview_url = best_item.get("previewUrl")
+                    art = best_item.get("artworkUrl100")
+                    if art:
+                        artwork_url = art.replace("100x100bb", "600x600bb")
+                    source = "itunes"
+    except Exception:
+        pass
+
+    if not preview_url:
+        try:
+            dz = await fetch_deezer_track_metadata(clean_artist or "", song)
+            if dz and dz.get("preview_url"):
+                preview_url = dz["preview_url"]
+                artwork_url = artwork_url or dz.get("artwork_url")
+                source = "deezer"
+        except Exception:
+            pass
+
+    if preview_url:
+        with db_session() as conn:
+            conn.execute(
+                """
+                UPDATE tracks_catalog
+                SET preview_url = ?,
+                    artwork_url = COALESCE(artwork_url, ?)
+                WHERE track_key = ?
+                """,
+                (preview_url, artwork_url, tkey),
+            )
+
+    return {
+        "ok": bool(preview_url),
+        "track_key": tkey,
+        "preview_url": preview_url,
+        "artwork_url": artwork_url,
+        "source": source,
     }
 
 

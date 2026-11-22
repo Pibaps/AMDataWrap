@@ -1,10 +1,12 @@
-"""SSRF-hardened CORS-safe Artwork & Audio Proxy endpoints."""
+"""SSRF-hardened CORS-safe Artwork & Audio Proxy endpoints with lightweight disk cache."""
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
 import io
+import os
+from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Query, Request
@@ -14,6 +16,48 @@ from ..config import settings
 from ..security import safe_fetch_bytes, validate_proxy_url
 
 proxy_router = APIRouter(tags=["proxy"])
+
+_MAX_DISK_CACHE_FILES = 500
+
+
+def _cache_paths(cache_dir: Path, digest: str) -> tuple[Path, Path]:
+    return cache_dir / f"{digest}.bin", cache_dir / f"{digest}.meta"
+
+
+def _read_disk_cache(cache_dir: Path, digest: str) -> tuple[bytes, str] | None:
+    bin_path, meta_path = _cache_paths(cache_dir, digest)
+    if not bin_path.exists() or not meta_path.exists():
+        return None
+    try:
+        media_type = meta_path.read_text(encoding="utf-8").strip() or "image/jpeg"
+        data = bin_path.read_bytes()
+        if data:
+            return data, media_type
+    except OSError:
+        return None
+    return None
+
+
+def _write_disk_cache(cache_dir: Path, digest: str, data: bytes, media_type: str) -> None:
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        bin_path, meta_path = _cache_paths(cache_dir, digest)
+        tmp_bin = cache_dir / f".{digest}.{os.getpid()}.tmp"
+        tmp_meta = cache_dir / f".{digest}.{os.getpid()}.meta.tmp"
+        tmp_bin.write_bytes(data)
+        tmp_meta.write_text(media_type, encoding="utf-8")
+        os.replace(tmp_bin, bin_path)
+        os.replace(tmp_meta, meta_path)
+
+        # Evict oldest entries if cache grows beyond _MAX_DISK_CACHE_FILES
+        bin_files = [p for p in cache_dir.iterdir() if p.is_file() and p.suffix == ".bin"]
+        if len(bin_files) > _MAX_DISK_CACHE_FILES:
+            bin_files.sort(key=lambda p: p.stat().st_mtime)
+            for old in bin_files[: len(bin_files) - _MAX_DISK_CACHE_FILES]:
+                old.unlink(missing_ok=True)
+                old.with_suffix(".meta").unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 @proxy_router.get("/api/artwork-proxy")
@@ -26,7 +70,8 @@ async def artwork_proxy(
     validated_url = validate_proxy_url(url, "artwork")
     norm_fmt = (fmt or "").lower()
     etag_key = f"{validated_url}|{w or ''}|{norm_fmt}".encode("utf-8")
-    etag = f'"{hashlib.blake2b(etag_key, digest_size=12).hexdigest()}"'
+    digest = hashlib.blake2b(etag_key, digest_size=12).hexdigest()
+    etag = f'"{digest}"'
     cache_headers = {
         "Cache-Control": "public, max-age=604800, immutable",
         "ETag": etag,
@@ -34,6 +79,12 @@ async def artwork_proxy(
     }
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=cache_headers)
+
+    cache_dir = settings.artwork_cache_dir
+    cached = await asyncio.to_thread(_read_disk_cache, cache_dir, digest)
+    if cached is not None:
+        raw_bytes, media_type = cached
+        return Response(content=raw_bytes, media_type=media_type, headers=cache_headers)
 
     shared_client: httpx.AsyncClient | None = getattr(request.app.state, "proxy_http_client", None)
     own_client = shared_client is None
@@ -71,6 +122,8 @@ async def artwork_proxy(
                     return out.getvalue(), "image/jpeg"
 
             raw_bytes, media_type = await asyncio.to_thread(_transform, raw_bytes)
+
+        await asyncio.to_thread(_write_disk_cache, cache_dir, digest, raw_bytes, media_type)
 
         return Response(
             content=raw_bytes,

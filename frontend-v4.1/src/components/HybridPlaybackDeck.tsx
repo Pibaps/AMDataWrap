@@ -16,7 +16,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Disc3, ExternalLink, Pause, Play, Radio, SkipBack, SkipForward, Tv, X } from "lucide-react";
-import { API, apiPost, formatDurationMs } from "../api/client";
+import { API, apiGet, apiPost, formatDurationMs } from "../api/client";
 import { playbackClock, usePlaybackClock } from "../audio/playbackClock";
 import {
   getLastBridgePlayAt,
@@ -143,6 +143,7 @@ export const HybridPlaybackDeck: React.FC = () => {
   const ytPlayerRef = useRef<any>(null);
   const loadedVideoIdRef = useRef<string | null>(null);
   const scrobbledSigRef = useRef<string>("");
+  const refreshedPreviewKeysRef = useRef<Set<string>>(new Set());
   const bridgeWsRef = useRef<WebSocket | null>(null);
 
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
@@ -220,60 +221,77 @@ export const HybridPlaybackDeck: React.FC = () => {
     st.setMotorOn(false);
   }, []);
 
-  // 1. Live Now-Playing WebSocket (`/ws/now-playing`)
+  // 1. Live Now-Playing WebSocket (`/ws/now-playing`) with exponential backoff reconnect
   useEffect(() => {
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
     let ws: WebSocket | null = null;
-    try {
-      ws = new WebSocket(`${proto}://${window.location.host}/ws/now-playing`);
-      ws.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data);
-          if (msg.type === "now_playing" && msg.data?.song_name) {
-            const st = useV4Store.getState();
-            if (!st.nowPlaying || !st.isPlaying || st.nowPlaying.source === "external" || st.nowPlaying.source === "bridge") {
-              // Ignore stale emitState() from the previous song during the 6s bridge switch/resolve window
-              if (
-                st.preferredSource === "bridge" &&
-                st.nowPlaying &&
-                Date.now() - getLastBridgePlayAt() < 6000 &&
-                !msg.data.song_name
-                  .toLowerCase()
-                  .includes(st.nowPlaying.song_name.toLowerCase().slice(0, 12))
-              ) {
-                return;
+    let closed = false;
+    let delayMs = 1500;
+    let retryTimer: number | null = null;
+
+    const connect = () => {
+      if (closed) return;
+      try {
+        ws = new WebSocket(`${proto}://${window.location.host}/ws/now-playing`);
+        ws.onopen = () => {
+          delayMs = 1500;
+        };
+        ws.onmessage = (ev) => {
+          try {
+            const msg = JSON.parse(ev.data);
+            if (msg.type === "now_playing" && msg.data?.song_name) {
+              const st = useV4Store.getState();
+              if (!st.nowPlaying || !st.isPlaying || st.nowPlaying.source === "external" || st.nowPlaying.source === "bridge") {
+                if (
+                  st.preferredSource === "bridge" &&
+                  st.nowPlaying &&
+                  Date.now() - getLastBridgePlayAt() < 6000 &&
+                  !msg.data.song_name
+                    .toLowerCase()
+                    .includes(st.nowPlaying.song_name.toLowerCase().slice(0, 12))
+                ) {
+                  return;
+                }
+                const dur = msg.data.duration_ms || st.nowPlaying?.duration_ms || 180_000;
+                const pos = msg.data.position_ms || 0;
+                const playing = Boolean(msg.data.is_playing);
+                playbackClock.set(pos, dur, playing);
+                const sameSong =
+                  Boolean(st.nowPlaying) &&
+                  msg.data.song_name
+                    .toLowerCase()
+                    .includes(st.nowPlaying!.song_name.toLowerCase().slice(0, 12));
+                st.setNowPlaying({
+                  song_name: msg.data.song_name,
+                  artist_name: msg.data.artist_name || st.nowPlaying?.artist_name || "",
+                  album_name: msg.data.album_name || st.nowPlaying?.album_name || "",
+                  artwork_url: msg.data.artwork_url || st.nowPlaying?.artwork_url || null,
+                  track_key: sameSong ? st.nowPlaying?.track_key : undefined,
+                  duration_ms: dur,
+                  source: st.preferredSource === "bridge" ? "bridge" : "external",
+                  vinyl: sameSong ? st.nowPlaying?.vinyl ?? null : null,
+                });
+                st.setIsPlaying(playing);
+                st.setMotorOn(playing);
               }
-              const dur = msg.data.duration_ms || st.nowPlaying?.duration_ms || 180_000;
-              const pos = msg.data.position_ms || 0;
-              const playing = Boolean(msg.data.is_playing);
-              playbackClock.set(pos, dur, playing);
-              const sameSong =
-                Boolean(st.nowPlaying) &&
-                msg.data.song_name
-                  .toLowerCase()
-                  .includes(st.nowPlaying!.song_name.toLowerCase().slice(0, 12));
-              st.setNowPlaying({
-                song_name: msg.data.song_name,
-                artist_name: msg.data.artist_name || st.nowPlaying?.artist_name || "",
-                album_name: msg.data.album_name || st.nowPlaying?.album_name || "",
-                artwork_url: msg.data.artwork_url || st.nowPlaying?.artwork_url || null,
-                track_key: sameSong ? st.nowPlaying?.track_key : undefined,
-                duration_ms: dur,
-                source: st.preferredSource === "bridge" ? "bridge" : "external",
-                vinyl: sameSong ? st.nowPlaying?.vinyl ?? null : null,
-              });
-              st.setIsPlaying(playing);
-              st.setMotorOn(playing);
             }
+          } catch {
+            /* ignore */
           }
-        } catch {
-          /* ignore */
-        }
-      };
-    } catch {
-      /* ignore */
-    }
+        };
+        ws.onclose = () => {
+          if (closed) return;
+          retryTimer = window.setTimeout(connect, delayMs);
+          delayMs = Math.min(30_000, delayMs * 2);
+        };
+      } catch {
+        /* ignore */
+      }
+    };
+    connect();
     return () => {
+      closed = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
       try {
         ws?.close();
       } catch {
@@ -282,47 +300,65 @@ export const HybridPlaybackDeck: React.FC = () => {
     };
   }, [setNowPlaying, setIsPlaying, setMotorOn]);
 
-  // 2. Extension MV3 Bridge WebSocket (`/ws/bridge?role=frontend`)
+  // 2. Extension MV3 Bridge WebSocket (`/ws/bridge?role=frontend`) with exponential backoff reconnect
   useEffect(() => {
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
     let ws: WebSocket | null = null;
-    try {
-      ws = new WebSocket(`${proto}://${window.location.host}/ws/bridge?role=frontend`);
-      bridgeWsRef.current = ws;
-      registerBridgeSender((msg) => {
-        if (bridgeWsRef.current && bridgeWsRef.current.readyState === WebSocket.OPEN) {
-          bridgeWsRef.current.send(JSON.stringify(msg));
-          return true;
-        }
-        return false;
-      });
-      ws.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data);
-          if (msg.type === "bridge_status" && msg.data) {
-            setExtensionStatus(
-              Boolean(msg.data.extension_connected),
-              (msg.data.platforms || []).map((p: any) => p.platform)
-            );
-          } else if (msg.type === "track_ended") {
-            const stCur = useV4Store.getState();
-            if (stCur.nowPlaying?.source === "bridge" && Date.now() - getLastBridgePlayAt() > 2500) {
-              advanceToNextVinylTrack();
-            }
-          } else if (msg.type === "autoplay_blocked" && msg.detail) {
-            useV4Store.getState().showToast(msg.detail, 4500);
-          } else if (msg.type === "error" && msg.detail) {
-            useV4Store.getState().showToast(msg.detail, 5000);
-            useV4Store.getState().setPlaybackError(msg.detail);
+    let closed = false;
+    let delayMs = 1500;
+    let retryTimer: number | null = null;
+
+    const connect = () => {
+      if (closed) return;
+      try {
+        ws = new WebSocket(`${proto}://${window.location.host}/ws/bridge?role=frontend`);
+        bridgeWsRef.current = ws;
+        registerBridgeSender((msg) => {
+          if (bridgeWsRef.current && bridgeWsRef.current.readyState === WebSocket.OPEN) {
+            bridgeWsRef.current.send(JSON.stringify(msg));
+            return true;
           }
-        } catch {
-          /* ignore */
-        }
-      };
-    } catch {
-      /* ignore */
-    }
+          return false;
+        });
+        ws.onopen = () => {
+          delayMs = 1500;
+        };
+        ws.onmessage = (ev) => {
+          try {
+            const msg = JSON.parse(ev.data);
+            if (msg.type === "bridge_status" && msg.data) {
+              setExtensionStatus(
+                Boolean(msg.data.extension_connected),
+                (msg.data.platforms || []).map((p: any) => p.platform)
+              );
+            } else if (msg.type === "track_ended") {
+              const stCur = useV4Store.getState();
+              if (stCur.nowPlaying?.source === "bridge" && Date.now() - getLastBridgePlayAt() > 2500) {
+                advanceToNextVinylTrack();
+              }
+            } else if (msg.type === "autoplay_blocked" && msg.detail) {
+              useV4Store.getState().showToast(msg.detail, 4500);
+            } else if (msg.type === "error" && msg.detail) {
+              useV4Store.getState().showToast(msg.detail, 5000);
+              useV4Store.getState().setPlaybackError(msg.detail);
+            }
+          } catch {
+            /* ignore */
+          }
+        };
+        ws.onclose = () => {
+          if (closed) return;
+          retryTimer = window.setTimeout(connect, delayMs);
+          delayMs = Math.min(30_000, delayMs * 2);
+        };
+      } catch {
+        /* ignore */
+      }
+    };
+    connect();
     return () => {
+      closed = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
       registerBridgeSender(null);
       bridgeWsRef.current = null;
       try {
@@ -331,7 +367,7 @@ export const HybridPlaybackDeck: React.FC = () => {
         /* ignore */
       }
     };
-  }, [setExtensionStatus]);
+  }, [setExtensionStatus, advanceToNextVinylTrack]);
 
   // 3. Lazy Mount & 45s Pause / Power-Off / Source-Switch Hibernation for YouTube OOPIF
   const wantsYouTube = Boolean(
@@ -647,6 +683,36 @@ export const HybridPlaybackDeck: React.FC = () => {
         className="hidden"
         onEnded={() => {
           advanceToNextVinylTrack();
+        }}
+        onError={async () => {
+          const cur = useV4Store.getState().nowPlaying;
+          if (!cur || cur.source !== "preview") return;
+          const sig = `${cur.track_key || ""}::${cur.artist_name}::${cur.song_name}`.toLowerCase();
+          if (refreshedPreviewKeysRef.current.has(sig)) return;
+          refreshedPreviewKeysRef.current.add(sig);
+          try {
+            const qs = new URLSearchParams({
+              song: cur.song_name,
+              artist: cur.artist_name || "",
+              album: cur.album_name || "",
+            });
+            if (cur.track_key) qs.set("track_key", cur.track_key);
+            const res = await apiGet<{ ok: boolean; preview_url: string | null; artwork_url: string | null }>(
+              `/api/v4/playback/refresh-preview?${qs.toString()}`
+            );
+            if (res.ok && res.preview_url) {
+              const latest = useV4Store.getState().nowPlaying;
+              if (latest && latest.song_name === cur.song_name) {
+                useV4Store.getState().setNowPlaying({
+                  ...latest,
+                  preview_url: res.preview_url,
+                  artwork_url: latest.artwork_url || res.artwork_url || null,
+                });
+              }
+            }
+          } catch {
+            /* ignore refresh error */
+          }
         }}
       />
       {portalTarget && createPortal(turntableScreenContent, portalTarget)}

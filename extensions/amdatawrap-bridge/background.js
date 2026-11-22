@@ -10,6 +10,10 @@ const ALARM_NAME = "amdw-bridge-keepalive";
 
 let socket = null;
 let keepaliveTimer = null;
+let reconnectTimer = null;
+let reconnectDelayMs = 1000;
+let reconnectAttempts = 0;
+let lastConnectedAt = null;
 let connected = false;
 let lastBridgeError = null;
 const recentBridgeLogs = [];
@@ -207,6 +211,17 @@ function stopKeepalive() {
   }
 }
 
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  reconnectAttempts += 1;
+  const delay = reconnectDelayMs;
+  reconnectDelayMs = Math.min(30000, reconnectDelayMs * 2);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectWS();
+  }, delay);
+}
+
 function connectWS() {
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
     return;
@@ -215,11 +230,19 @@ function connectWS() {
     socket = new WebSocket(WS_URL);
   } catch {
     connected = false;
+    scheduleReconnect();
     return;
   }
 
   socket.onopen = async () => {
     connected = true;
+    reconnectDelayMs = 1000;
+    reconnectAttempts = 0;
+    lastConnectedAt = new Date().toISOString();
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
     startKeepalive();
     await announcePlatforms();
   };
@@ -238,6 +261,7 @@ function connectWS() {
   socket.onclose = () => {
     connected = false;
     socket = null;
+    scheduleReconnect();
   };
 
   socket.onerror = () => {
@@ -375,7 +399,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message?.type === "amdw-popup-status") {
     scanOpenPlatforms().then((platforms) => {
-      sendResponse({ connected, platforms, lastError: lastBridgeError, logs: recentBridgeLogs });
+      sendResponse({
+        connected,
+        reconnectAttempts,
+        lastConnectedAt,
+        platforms,
+        lastError: lastBridgeError,
+        logs: recentBridgeLogs,
+      });
     });
     return true;
   }
