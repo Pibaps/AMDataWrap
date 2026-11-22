@@ -117,8 +117,19 @@ export interface VinylDetail {
 export interface GlobalFilters {
   profile_id: number | null;
   source_provider: string;
+  period_mode: "all" | "year" | "month" | "season" | "custom";
   year: string;
-  skip_mode: "lastfm" | "all";
+  month: string;
+  season: string;
+  date_from: string;
+  date_to: string;
+  skip_mode: "lastfm" | "all" | "custom";
+  min_seconds: number;
+  min_completion_pct: number;
+  metric: "ms" | "plays";
+  genre: string;
+  device: string;
+  offline: "" | "true" | "false";
   exclude_incognito: boolean;
 }
 
@@ -135,8 +146,24 @@ export function buildQueryParams(
   if (filters.year && filters.year !== "all") {
     qs.set("period_mode", "year");
     qs.set("year", filters.year);
+  } else if (filters.period_mode && filters.period_mode !== "all") {
+    qs.set("period_mode", filters.period_mode);
+    if (filters.period_mode === "month" && filters.month) qs.set("month", filters.month);
+    if (filters.period_mode === "season" && filters.season) qs.set("season", filters.season);
+    if (filters.period_mode === "custom") {
+      if (filters.date_from) qs.set("date_from", filters.date_from);
+      if (filters.date_to) qs.set("date_to", filters.date_to);
+    }
   }
   qs.set("skip_mode", filters.skip_mode);
+  if (filters.skip_mode === "custom") {
+    qs.set("min_seconds", String(filters.min_seconds));
+    qs.set("min_completion_pct", String(filters.min_completion_pct));
+  }
+  if (filters.metric && filters.metric !== "ms") qs.set("metric", filters.metric);
+  if (filters.genre) qs.set("genre", filters.genre);
+  if (filters.device) qs.set("device", filters.device);
+  if (filters.offline) qs.set("offline", filters.offline);
   if (filters.exclude_incognito) qs.set("exclude_incognito", "true");
   if (extra) {
     for (const [k, v] of Object.entries(extra)) {
@@ -169,6 +196,9 @@ export const API = {
   iceberg: "/api/v3/analytics/iceberg",
   search: "/api/v3/search",
   sessions: "/api/sessions",
+  history: "/api/history",
+  historyCsv: "/api/history/export.csv",
+  trackBpm: "/api/external/track-bpm",
   detailArtist: (key: string) => `/api/detail/artist/${encodeURIComponent(key)}`,
   detailAlbum: (key: string) => `/api/detail/album/${encodeURIComponent(key)}`,
   detailDay: (date: string) => `/api/detail/day/${encodeURIComponent(date)}`,
@@ -221,6 +251,15 @@ export async function apiPost<T = any>(path: string, body?: unknown): Promise<T>
   return res.json();
 }
 
+export async function apiDelete<T = any>(path: string): Promise<T> {
+  const res = await fetch(path, { method: "DELETE" });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => res.statusText);
+    throw new Error(`API ${res.status}: ${txt.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
 export function formatDurationMs(ms: number): string {
   if (!ms || ms <= 0) return "0:00";
   const totalSec = Math.floor(ms / 1000);
@@ -230,11 +269,15 @@ export function formatDurationMs(ms: number): string {
 }
 
 export type TimeUnit = "hours" | "minutes";
+export type ActiveLocale = "fr" | "en";
 
 let _activeTimeUnit: TimeUnit =
   typeof localStorage !== "undefined" && localStorage.getItem("amdw.timeUnit") === "minutes"
     ? "minutes"
     : "hours";
+
+let _activeLocale: ActiveLocale =
+  typeof localStorage !== "undefined" && localStorage.getItem("amdw.locale") === "en" ? "en" : "fr";
 
 export function getActiveTimeUnit(): TimeUnit {
   return _activeTimeUnit;
@@ -247,18 +290,35 @@ export function setActiveTimeUnit(unit: TimeUnit): void {
   }
 }
 
+export function getActiveLocale(): ActiveLocale {
+  return _activeLocale;
+}
+
+export function setActiveLocale(loc: ActiveLocale): void {
+  _activeLocale = loc;
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem("amdw.locale", loc);
+  }
+}
+
+function intlLocale(): string {
+  return _activeLocale === "en" ? "en-US" : "fr-FR";
+}
+
 export function formatMinutes(ms: number): string {
   const m = (ms || 0) / 60_000;
-  if (m >= 10 || m === 0) return `${Math.round(m).toLocaleString("fr-FR")} min`;
-  return `${m.toFixed(1).replace(".", ",")} min`;
+  if (m >= 10 || m === 0) return `${Math.round(m).toLocaleString(intlLocale())} min`;
+  const str = m.toFixed(1);
+  return `${_activeLocale === "fr" ? str.replace(".", ",") : str} min`;
 }
 
 export function formatHours(ms: number): string {
   if (_activeTimeUnit === "minutes") return formatMinutes(ms);
   const h = (ms || 0) / 3_600_000;
   if (h > 0 && h < 1) return formatMinutes(ms);
-  if (h >= 10) return `${Math.round(h).toLocaleString("fr-FR")} h`;
-  return `${h.toFixed(1).replace(".", ",")} h`;
+  if (h >= 10) return `${Math.round(h).toLocaleString(intlLocale())} h`;
+  const str = h.toFixed(1);
+  return `${_activeLocale === "fr" ? str.replace(".", ",") : str} h`;
 }
 
 export function formatHoursNum(hours: number | null | undefined): string {
@@ -266,12 +326,12 @@ export function formatHoursNum(hours: number | null | undefined): string {
 }
 
 export function formatInt(n: number | null | undefined): string {
-  return Math.round(n || 0).toLocaleString("fr-FR");
+  return Math.round(n || 0).toLocaleString(intlLocale());
 }
 
 export function formatDateFr(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso.length <= 10 ? `${iso}T12:00:00` : iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  return d.toLocaleDateString(intlLocale(), { day: "numeric", month: "long", year: "numeric" });
 }

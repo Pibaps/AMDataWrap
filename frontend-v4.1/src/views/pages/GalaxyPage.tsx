@@ -12,6 +12,7 @@ import type { GalaxyData } from "../../api/types";
 import { playTrack } from "../../audio/playTrack";
 import { Cover, Empty, ErrorNote, Loading, Page, PlayButton } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
+import { useT } from "../../i18n";
 import { useV4Store } from "../../store/useV4Store";
 
 interface StarNode {
@@ -34,6 +35,7 @@ interface StarNode {
 const WARM_PALETTE = ["#e8873e", "#c9a86b", "#d2553a", "#8fa27a", "#7e99a3", "#b87d95", "#d49b54"];
 
 export const GalaxyPage: React.FC = () => {
+  const { t } = useT();
   const filters = useV4Store((s) => s.filters);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);
   const { data, loading, error, reload } = useApi<GalaxyData>(`${API.galaxy}${qs}`);

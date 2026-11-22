@@ -11,8 +11,8 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { Check, ChevronDown, Clock, Copy, GitMerge, Plus, RefreshCw, Smartphone, Upload, Wifi } from "lucide-react";
-import { API, apiGet, apiPost, formatInt, type ProfileItem } from "../../api/client";
+import { Check, ChevronDown, Clock, Copy, Download, GitMerge, Plus, RefreshCw, Smartphone, Trash2, Upload, Wifi } from "lucide-react";
+import { API, apiDelete, apiGet, apiPost, formatInt, type ProfileItem } from "../../api/client";
 import { Page, Section } from "../../components/ui";
 import { invalidateApiCache } from "../../hooks/useApi";
 import { useV4Store } from "../../store/useV4Store";
@@ -47,6 +47,39 @@ export const HubPage: React.FC<HubPageProps> = ({ onRefreshProfiles }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [repairMsg, setRepairMsg] = useState<string | null>(null);
   const [repairing, setRepairing] = useState(false);
+  const [backupMsg, setBackupMsg] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
+
+  const handleDeleteSource = async (profileId: number, sourceId: number, filename: string) => {
+    if (!window.confirm(`Supprimer l'import « ${filename} » et ses écoutes associées ?`)) return;
+    try {
+      await apiDelete(`/api/v4/profiles/${profileId}/sources/${sourceId}`);
+      invalidateApiCache();
+      await onRefreshProfiles();
+      setBackupMsg(`Source « ${filename} » supprimée.`);
+    } catch (err: any) {
+      setBackupMsg(`Erreur suppression : ${err.message}`);
+    }
+  };
+
+  const handleRestoreBackup = async (file: File) => {
+    setRestoring(true);
+    setBackupMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/v4/profiles/import-backup", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || res.statusText);
+      invalidateApiCache();
+      await onRefreshProfiles();
+      setBackupMsg(`Sauvegarde restaurée : ${data.name || "profil"} (${formatInt(data.inserted_events || 0)} écoutes).`);
+    } catch (err: any) {
+      setBackupMsg(`Erreur restauration : ${err.message}`);
+    } finally {
+      setRestoring(false);
+    }
+  };
 
   const handleRepairEnrichment = async () => {
     setRepairing(true);
@@ -364,42 +397,92 @@ export const HubPage: React.FC<HubPageProps> = ({ onRefreshProfiles }) => {
             {profiles.map((p: ProfileItem) => (
               <div
                 key={p.id}
-                className={`p-3 rounded border flex items-center justify-between gap-3 ${
+                className={`p-3 rounded border space-y-2 ${
                   p.is_active ? "bg-bg-3 border-amber/60" : "bg-bg border-line"
                 }`}
               >
-                <div>
-                  <p className="text-sm font-medium flex items-center gap-2">
-                    {p.name}
-                    {p.kind === "merged" && <span className="kicker px-2 py-0.5 rounded bg-bg-4">FUSIONNÉ</span>}
-                  </p>
-                  <p className="text-xs text-ink-3 num mt-0.5">
-                    {formatInt(p.total_plays ?? p.events_count ?? 0)} écoutes enregistrées
-                  </p>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium flex items-center gap-2">
+                      {p.name}
+                      {p.kind === "merged" && <span className="kicker px-2 py-0.5 rounded bg-bg-4">FUSIONNÉ</span>}
+                    </p>
+                    <p className="text-xs text-ink-3 num mt-0.5">
+                      {formatInt(p.total_plays ?? p.events_count ?? 0)} écoutes enregistrées
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={`/api/v4/profiles/${p.id}/export`}
+                      download={`amdatawrap-profile-${p.id}.amdw.json.gz`}
+                      className="btn text-[11px] py-1 px-2"
+                      title="Exporter une sauvegarde portable (.amdw.json.gz)"
+                    >
+                      <Download className="w-3 h-3" />
+                      Export
+                    </a>
+                    {!p.is_active ? (
+                      <button onClick={() => activateProfile(p.id)} className="btn text-xs">
+                        Sélectionner
+                      </button>
+                    ) : (
+                      <span className="num text-xs text-amber font-semibold">ACTIF</span>
+                    )}
+                  </div>
                 </div>
-                {!p.is_active ? (
-                  <button onClick={() => activateProfile(p.id)} className="btn text-xs">
-                    Sélectionner
-                  </button>
-                ) : (
-                  <span className="num text-xs text-amber font-semibold">ACTIF</span>
+                {Array.isArray(p.sources) && p.sources.length > 0 && (
+                  <div className="pt-2 border-t border-line/60 space-y-1">
+                    {p.sources.map((src) => (
+                      <div key={src.id} className="flex items-center justify-between gap-2 text-[11px] text-ink-3">
+                        <span className="truncate">
+                          <span className="text-ink-2 font-mono">{src.source_provider}</span> · {src.filename} ({formatInt(src.events_count)})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSource(p.id, src.id, src.filename || src.source_provider)}
+                          className="text-ink-3 hover:text-ember p-0.5 rounded transition-colors shrink-0"
+                          title="Supprimer cette source"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             ))}
           </div>
 
           <div className="mt-4 pt-4 border-t border-line flex flex-wrap items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={handleRepairEnrichment}
-              disabled={repairing}
-              data-testid="repair-enrichment-btn"
-              className="btn text-xs"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${repairing ? "animate-spin" : ""}`} />
-              Réparer / Rafraîchir les pochettes &amp; extraits manquants
-            </button>
-            {repairMsg && <span className="text-[11.5px] text-amber num">{repairMsg}</span>}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRepairEnrichment}
+                disabled={repairing}
+                data-testid="repair-enrichment-btn"
+                className="btn text-xs"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${repairing ? "animate-spin" : ""}`} />
+                Réparer / Rafraîchir les pochettes &amp; extraits manquants
+              </button>
+              <label className="btn text-xs cursor-pointer">
+                <Upload className="w-3.5 h-3.5" />
+                {restoring ? "Restauration…" : "Restaurer (.amdw.json.gz)"}
+                <input
+                  type="file"
+                  accept=".gz,.json,.amdw"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleRestoreBackup(f);
+                    e.currentTarget.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            {(repairMsg || backupMsg) && (
+              <span className="text-[11.5px] text-amber num">{backupMsg || repairMsg}</span>
+            )}
           </div>
         </Section>
 

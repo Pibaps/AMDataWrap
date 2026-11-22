@@ -1,0 +1,108 @@
+export const fr = {
+  // Navigation
+  "nav.studio": "Salon 3D",
+  "nav.overview": "Synthèse",
+  "nav.tops": "Classements",
+  "nav.chrono": "Rythmes",
+  "nav.persona": "Portrait",
+  "nav.behavior": "Habitudes",
+  "nav.science": "Science",
+  "nav.atlas": "Atlas",
+  "nav.galaxy": "Constellation",
+  "nav.search": "Recherche",
+  "nav.wrapped": "Wrapped",
+  "nav.hub": "Archives",
+
+  // Header & Filters
+  "header.allPlatforms": "Toutes",
+  "header.allYears": "Toutes années",
+  "header.filtersBtn": "Filtres +",
+  "header.demoBanner": "Mode Démo actif — bibliothèque synthétique isolée",
+  "header.exitDemo": "Quitter la démo",
+
+  // Filter Drawer
+  "filter.title": "Filtres analytiques avancés",
+  "filter.month": "Mois",
+  "filter.allMonths": "Tous les mois",
+  "filter.season": "Saison",
+  "filter.allSeasons": "Toutes saisons",
+  "filter.dateFrom": "Du",
+  "filter.dateTo": "Au",
+  "filter.skipRule": "Règle de skip",
+  "filter.skipLastfm": "Last.fm (≥30s & ≥50%)",
+  "filter.skipAll": "Toutes les écoutes",
+  "filter.skipCustom": "Personnalisée",
+  "filter.minSeconds": "Min. secondes",
+  "filter.minCompletion": "Complétion min (%)",
+  "filter.metric": "Classement par",
+  "filter.metricMs": "Temps d'écoute",
+  "filter.metricPlays": "Nombre d'écoutes",
+  "filter.genre": "Genre",
+  "filter.allGenres": "Tous les genres",
+  "filter.device": "Appareil",
+  "filter.allDevices": "Tous les appareils",
+  "filter.offline": "Mode hors-ligne",
+  "filter.offlineAll": "Tous",
+  "filter.offlineOnly": "Hors-ligne uniquement",
+  "filter.onlineOnly": "En ligne uniquement",
+  "filter.excludeIncognito": "Exclure les sessions privées (Incognito)",
+  "filter.reset": "Réinitialiser",
+  "filter.close": "Fermer",
+
+  // Welcome / Demo
+  "welcome.kicker": "SALON D'ÉCOUTE · ANALYSE MUSICALE PRIVÉE",
+  "welcome.title": "Bienvenue dans AMDataWrap",
+  "welcome.subtitle": "Explore ton histoire musicale en 3D et à travers 11 vues analytiques — 100 % local et privé sur ton ordinateur.",
+  "welcome.importBtn": "Importer mon archive",
+  "welcome.demoBtn": "Explorer avec une bibliothèque de démo",
+  "welcome.demoLoading": "Préparation du salon de démo…",
+
+  // Drawers
+  "drawer.artist": "FICHE ARTISTE",
+  "drawer.album": "FICHE ALBUM",
+  "drawer.day": "JOURNAL D'ÉCOUTE",
+  "drawer.placeOnTurntable": "Poser sur la platine 3D",
+  "drawer.bestDay": "Meilleure journée",
+  "drawer.bio": "Biographie",
+  "drawer.topAlbums": "Albums principaux",
+  "drawer.topTracks": "Titres principaux",
+  "drawer.tracks": "Pistes",
+  "drawer.monthlyEvolution": "Évolution mensuelle",
+  "drawer.timeline": "Chronologie de la journée",
+  "drawer.loading": "Chargement de la fiche…",
+  "drawer.close": "Fermer",
+
+  // Lyrics & Playback
+  "player.lyrics": "Paroles",
+  "player.lyricsTitle": "Paroles synchronisées",
+  "player.lyricsNotFound": "Aucune parole trouvée sur LRCLIB pour ce titre.",
+  "player.lyricsInstrumental": "Titre instrumental.",
+  "player.jumpToTurntable": "Voir sur la platine",
+  "player.standby": "Platine en veille — clique sur START ou un sillon du vinyle 3D",
+  "player.bpm": "BPM",
+
+  // Wrapped
+  "wrapped.exportPoster": "Exporter Poster PNG (HD)",
+  "wrapped.exportReceipt": "Exporter Ticket PNG (HD)",
+  "wrapped.autoSoundtrack": "Bande-son auto",
+
+  // Search / Sessions / History
+  "search.tabFts": "Recherche FTS5",
+  "search.tabSessions": "Sessions",
+  "search.tabHistory": "Historique complet",
+  "history.exportCsv": "Exporter CSV",
+  "history.placeholder": "Filtrer par titre, artiste ou album…",
+  "history.rowsCount": "écoutes affichées",
+  "sessions.recent": "Récentes",
+  "sessions.longest": "Plus longues",
+  "sessions.mostPlays": "Plus de titres",
+
+  // Common
+  "common.plays": "écoutes",
+  "common.retry": "Réessayer",
+  "common.loading": "Chargement…",
+  "common.noData": "Aucune donnée disponible.",
+  "common.listen": "Écouter",
+} as const;
+
+export type TranslationKey = keyof typeof fr;

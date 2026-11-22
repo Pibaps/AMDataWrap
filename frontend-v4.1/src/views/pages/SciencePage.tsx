@@ -9,9 +9,11 @@ import { API, buildQueryParams, formatHoursNum, formatInt } from "../../api/clie
 import type { CamelotData, ErasData, ScienceData } from "../../api/types";
 import { BarList, Cover, Empty, ErrorNote, InfoTooltip, Loading, Page, Section, Stat } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
+import { useT } from "../../i18n";
 import { useV4Store } from "../../store/useV4Store";
 
 export const SciencePage: React.FC = () => {
+  const { t } = useT();
   const filters = useV4Store((s) => s.filters);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);
 

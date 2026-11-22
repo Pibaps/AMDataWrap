@@ -6,9 +6,13 @@
 import React, { useEffect, useState } from "react";
 import { API, apiGet, formatDurationMs, formatHours, formatInt } from "../../api/client";
 import { playTrack } from "../../audio/playTrack";
-import { Cover, Empty, Page, PlayButton, Section } from "../../components/ui";
+import { HistorySessionsPanel } from "../../components/HistorySessionsPanel";
+import { Cover, Empty, Page, PlayButton, Section, Tabs } from "../../components/ui";
+import { useT } from "../../i18n";
 
 export const SearchPage: React.FC = () => {
+  const { t } = useT();
+  const [subTab, setSubTab] = useState<"fts" | "sessions" | "history">("fts");
   const [query, setQuery] = useState("");
   const [tracks, setTracks] = useState<any[]>([]);
   const [lyricsMatches, setLyricsMatches] = useState<any[]>([]);
@@ -50,10 +54,25 @@ export const SearchPage: React.FC = () => {
 
   return (
     <Page
-      title="Recherche plein-texte"
-      kicker="INDEX SQLITE FTS5 UNICODE61"
-      intro="Recherche instantanée insensible aux accents dans l'ensemble de ton catalogue de titres, artistes, albums et paroles mises en cache."
+      title={t("nav.search")}
+      kicker="INDEX SQLITE FTS5 UNICODE61 · SESSIONS · HISTORIQUE"
+      intro="Recherche instantanée insensible aux accents dans l'ensemble de ton catalogue, sessions d'écoute et historique complet."
+      actions={
+        <Tabs
+          value={subTab}
+          onChange={(v) => setSubTab(v as "fts" | "sessions" | "history")}
+          options={[
+            { id: "fts", label: t("search.tabFts") },
+            { id: "sessions", label: t("search.tabSessions") },
+            { id: "history", label: t("search.tabHistory") },
+          ]}
+        />
+      }
     >
+      {subTab !== "fts" ? (
+        <HistorySessionsPanel key={subTab} initialMode={subTab} />
+      ) : (
+        <>
       <div className="panel p-5 mb-6">
         <label className="kicker block mb-2" htmlFor="fts5-search-input">
           REQUÊTE (TITRE, ARTISTE, ALBUM OU PAROLES)
@@ -141,6 +160,8 @@ export const SearchPage: React.FC = () => {
             </Section>
           )}
         </div>
+      )}
+        </>
       )}
     </Page>
   );

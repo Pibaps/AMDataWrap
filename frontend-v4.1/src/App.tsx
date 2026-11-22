@@ -8,10 +8,22 @@
  */
 
 import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
-import { API, apiGet, type NavTab, type ProfileCapabilities, type ProfileItem } from "./api/client";
+import {
+  API,
+  apiGet,
+  apiPost,
+  type NavTab,
+  type ProfileCapabilities,
+  type ProfileItem,
+} from "./api/client";
+import type { FilterOptionsData } from "./api/types";
+import { DetailDrawer } from "./components/DetailDrawer";
 import { EnrichmentPill } from "./components/EnrichmentPill";
+import { FilterDrawer } from "./components/FilterDrawer";
 import { HybridPlaybackDeck } from "./components/HybridPlaybackDeck";
 import { Loading } from "./components/ui";
+import { WelcomeOverlay } from "./components/WelcomeOverlay";
+import { useT } from "./i18n";
 import { PersistentStageCanvas } from "./scene/PersistentStageCanvas";
 import { useV4Store } from "./store/useV4Store";
 import { VinylStudioView } from "./views/VinylStudioView";
@@ -28,33 +40,40 @@ const SearchPage = lazy(() => import("./views/pages/SearchPage").then((m) => ({ 
 const WrappedPage = lazy(() => import("./views/pages/WrappedPage").then((m) => ({ default: m.WrappedPage })));
 const HubPage = lazy(() => import("./views/pages/HubPage").then((m) => ({ default: m.HubPage })));
 
-const NAV_TABS: Array<{ id: NavTab; label: string }> = [
-  { id: "studio", label: "Salon 3D" },
-  { id: "overview", label: "Synthèse" },
-  { id: "tops", label: "Classements" },
-  { id: "chrono", label: "Rythmes" },
-  { id: "persona", label: "Portrait" },
-  { id: "behavior", label: "Habitudes" },
-  { id: "science", label: "Science" },
-  { id: "atlas", label: "Atlas" },
-  { id: "galaxy", label: "Constellation" },
-  { id: "search", label: "Recherche" },
-  { id: "wrapped", label: "Wrapped" },
-  { id: "hub", label: "Archives" },
+const NAV_TAB_IDS: NavTab[] = [
+  "studio",
+  "overview",
+  "tops",
+  "chrono",
+  "persona",
+  "behavior",
+  "science",
+  "atlas",
+  "galaxy",
+  "search",
+  "wrapped",
+  "hub",
 ];
 
 export const App: React.FC = () => {
+  const { t, locale } = useT();
   const activeTab = useV4Store((s) => s.activeTab);
   const setActiveTab = useV4Store((s) => s.setActiveTab);
   const filters = useV4Store((s) => s.filters);
   const setFilters = useV4Store((s) => s.setFilters);
   const timeUnit = useV4Store((s) => s.timeUnit);
   const setTimeUnit = useV4Store((s) => s.setTimeUnit);
+  const setLocale = useV4Store((s) => s.setLocale);
   const capabilities = useV4Store((s) => s.capabilities);
+  const profiles = useV4Store((s) => s.profiles);
+  const activeProfileId = useV4Store((s) => s.activeProfileId);
   const setProfilesData = useV4Store((s) => s.setProfilesData);
 
-  const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [filterOptions, setFilterOptions] = useState<FilterOptionsData | null>(null);
   const [hasData, setHasData] = useState<boolean>(true);
+  const [filtersOpen, setFiltersOpen] = useState<boolean>(false);
+  const [exitingDemo, setExitingDemo] = useState<boolean>(false);
+  const availableYears = filterOptions?.years ?? [];
 
   const PLATFORM_LABELS: Record<string, string> = {
     apple_music: "Apple Music",
@@ -79,10 +98,10 @@ export const App: React.FC = () => {
         apiGet<ProfileCapabilities>(`${API.capabilities}${activeId ? `?profile_id=${activeId}` : ""}`).catch(
           () => null
         ),
-        apiGet<{ years?: number[] }>(`${API.filters}${fltQs}`).catch(() => ({ years: [] })),
+        apiGet<FilterOptionsData>(`${API.filters}${fltQs}`).catch(() => null),
       ]);
       setProfilesData(profRes.profiles || [], activeId, caps);
-      if (Array.isArray(flt?.years)) setAvailableYears(flt.years);
+      if (flt) setFilterOptions(flt);
     } catch {
       /* backend booting */
     }
@@ -99,9 +118,9 @@ export const App: React.FC = () => {
       fltParams.set("source_provider", filters.source_provider);
     }
     const qs = fltParams.toString() ? `?${fltParams.toString()}` : "";
-    apiGet<{ years?: number[] }>(`${API.filters}${qs}`)
+    apiGet<FilterOptionsData>(`${API.filters}${qs}`)
       .then((flt) => {
-        if (Array.isArray(flt?.years)) setAvailableYears(flt.years);
+        if (flt) setFilterOptions(flt);
       })
       .catch(() => {});
   }, [filters.profile_id, filters.source_provider]);
@@ -139,6 +158,32 @@ export const App: React.FC = () => {
       ? selectedPlatforms.map((p) => PLATFORM_LABELS[p] || p.replace(/_/g, " ")).join(" + ").toUpperCase()
       : "MULTI-PLATEFORME";
 
+  const activeProfile = profiles.find((p) => p.id === activeProfileId);
+  const isDemoActive = activeProfile?.name === "Démo — Salon d'écoute";
+
+  const activeAdvancedCount = [
+    filters.month !== "all",
+    filters.season !== "all",
+    Boolean(filters.date_from),
+    Boolean(filters.date_to),
+    filters.skip_mode !== "lastfm",
+    filters.metric !== "ms",
+    filters.genre !== "all",
+    filters.device !== "all",
+    Boolean(filters.offline),
+    filters.exclude_incognito === false,
+  ].filter(Boolean).length;
+
+  const handleExitDemo = async () => {
+    setExitingDemo(true);
+    try {
+      await apiPost("/api/v4/demo/unload", {});
+      await loadProfilesAndCapabilities();
+    } finally {
+      setExitingDemo(false);
+    }
+  };
+
   return (
     <div className="relative min-h-screen text-ink">
       {/* SINGLE PERSISTENT 3D LISTENING ROOM CANVAS (pauses RAF automatically off studio tab) */}
@@ -163,7 +208,7 @@ export const App: React.FC = () => {
             aria-label="Navigation AMDataWrap V4"
             className="flex items-center gap-1 overflow-x-auto max-w-full py-0.5"
           >
-            {NAV_TABS.map(({ id, label }) => {
+            {NAV_TAB_IDS.map((id) => {
               const active = activeTab === id;
               return (
                 <button
@@ -176,7 +221,7 @@ export const App: React.FC = () => {
                       : "text-ink-2 hover:text-ink hover:bg-bg-3"
                   }`}
                 >
-                  {label}
+                  {t(`nav.${id}`)}
                 </button>
               );
             })}
@@ -198,7 +243,7 @@ export const App: React.FC = () => {
                     isAllPlatforms ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink"
                   }`}
                 >
-                  Toutes
+                  {t("header.allPlatforms")}
                 </button>
                 {availablePlatforms.map((p) => {
                   const active = !isAllPlatforms && selectedPlatforms.includes(p);
@@ -224,13 +269,51 @@ export const App: React.FC = () => {
               aria-label="Filtre année"
               className="field text-xs"
             >
-              <option value="all">Toutes années</option>
-              {availableYears.map((y) => (
+              <option value="all">{t("header.allYears")}</option>
+              {availableYears.map((y: number) => (
                 <option key={y} value={String(y)}>
                   {y}
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              data-testid="filters-toggle"
+              onClick={() => setFiltersOpen((v) => !v)}
+              className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                filtersOpen || activeAdvancedCount > 0
+                  ? "bg-amber/15 border-amber/40 text-amber"
+                  : "bg-bg-3 border-line-2 text-ink-2 hover:text-ink"
+              }`}
+            >
+              {t("header.filtersBtn")}
+              {activeAdvancedCount > 0 ? ` (${activeAdvancedCount})` : ""}
+            </button>
+            <div
+              className="flex items-center gap-0.5 bg-bg-3 border border-line-2 rounded p-0.5"
+              role="group"
+              aria-label="Language"
+              data-testid="lang-toggle"
+            >
+              <button
+                type="button"
+                onClick={() => setLocale("fr")}
+                className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
+                  locale === "fr" ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink"
+                }`}
+              >
+                FR
+              </button>
+              <button
+                type="button"
+                onClick={() => setLocale("en")}
+                className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
+                  locale === "en" ? "bg-amber text-[#1a0f07] font-semibold" : "text-ink-2 hover:text-ink"
+                }`}
+              >
+                EN
+              </button>
+            </div>
             <div
               className="flex items-center gap-0.5 bg-bg-3 border border-line-2 rounded p-0.5"
               role="group"
@@ -260,6 +343,34 @@ export const App: React.FC = () => {
         </div>
       </header>
 
+      <FilterDrawer
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        options={filterOptions}
+        hasIncognito={capabilities?.has_incognito_flag}
+      />
+
+      {isDemoActive && (
+        <div
+          data-testid="demo-banner"
+          className="relative z-20 bg-amber/10 border-b border-amber/30 px-4 py-2 text-xs text-amber flex items-center justify-center gap-3"
+        >
+          <span>{t("header.demoBanner")}</span>
+          <button
+            type="button"
+            disabled={exitingDemo}
+            onClick={handleExitDemo}
+            className="px-2.5 py-0.5 rounded bg-amber text-[#1a0f07] font-semibold hover:opacity-90 disabled:opacity-50"
+          >
+            {t("header.exitDemo")}
+          </button>
+        </div>
+      )}
+
+      {!hasData && activeTab !== "hub" && (
+        <WelcomeOverlay onLoaded={loadProfilesAndCapabilities} />
+      )}
+
       {/* Active View */}
       <main key={activeTab === "studio" ? "studio" : `unit-${timeUnit}`} className={`relative z-10 ${activeTab === "studio" ? "pointer-events-none" : ""}`}>
         {activeTab === "studio" ? (
@@ -286,6 +397,9 @@ export const App: React.FC = () => {
           </Suspense>
         )}
       </main>
+
+      {/* Contextual Entity Drawers (Artist / Album / Day) */}
+      <DetailDrawer />
 
       {/* Bottom Transport Bar & Turntable-Mounted YouTube OLED Monitor */}
       <HybridPlaybackDeck />

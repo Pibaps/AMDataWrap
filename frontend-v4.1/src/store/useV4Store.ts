@@ -11,8 +11,11 @@
 
 import { create } from "zustand";
 import {
+  getActiveLocale,
   getActiveTimeUnit,
+  setActiveLocale,
   setActiveTimeUnit,
+  type ActiveLocale,
   type GlobalFilters,
   type NavTab,
   type ProfileCapabilities,
@@ -23,6 +26,12 @@ import {
   type VinylDetail,
   type VinylStage,
 } from "../api/client";
+
+export type DrawerTarget =
+  | { type: "artist"; key: string }
+  | { type: "album"; key: string }
+  | { type: "day"; date: string }
+  | null;
 
 export type PlaybackSource = "youtube" | "preview" | "bridge";
 
@@ -45,6 +54,14 @@ export interface V4State {
 
   filters: GlobalFilters;
   setFilters: (patch: Partial<GlobalFilters>) => void;
+  resetFilters: () => void;
+
+  locale: ActiveLocale;
+  setLocale: (loc: ActiveLocale) => void;
+
+  drawerTarget: DrawerTarget;
+  openDrawer: (target: NonNullable<DrawerTarget>) => void;
+  closeDrawer: () => void;
 
   timeUnit: TimeUnit;
   setTimeUnit: (unit: TimeUnit) => void;
@@ -124,18 +141,48 @@ export interface V4State {
 const savedFinish = (typeof localStorage !== "undefined" && localStorage.getItem("amdw.finish")) as TurntableFinish | null;
 let toastTimer: number | null = null;
 
+export const DEFAULT_GLOBAL_FILTERS: GlobalFilters = {
+  profile_id: null,
+  source_provider: "all",
+  period_mode: "all",
+  year: "all",
+  month: "",
+  season: "",
+  date_from: "",
+  date_to: "",
+  skip_mode: "lastfm",
+  min_seconds: 30,
+  min_completion_pct: 50,
+  metric: "ms",
+  genre: "",
+  device: "",
+  offline: "",
+  exclude_incognito: false,
+};
+
 export const useV4Store = create<V4State>((set) => ({
   activeTab: "studio",
   setActiveTab: (activeTab) => set({ activeTab }),
 
-  filters: {
-    profile_id: null,
-    source_provider: "all",
-    year: "all",
-    skip_mode: "lastfm",
-    exclude_incognito: false,
-  },
+  filters: { ...DEFAULT_GLOBAL_FILTERS },
   setFilters: (patch) => set((s) => ({ filters: { ...s.filters, ...patch } })),
+  resetFilters: () =>
+    set((s) => ({
+      filters: {
+        ...DEFAULT_GLOBAL_FILTERS,
+        profile_id: s.filters.profile_id,
+      },
+    })),
+
+  locale: getActiveLocale(),
+  setLocale: (locale) => {
+    setActiveLocale(locale);
+    set({ locale });
+  },
+
+  drawerTarget: null,
+  openDrawer: (drawerTarget) => set({ drawerTarget }),
+  closeDrawer: () => set({ drawerTarget: null }),
 
   timeUnit: getActiveTimeUnit(),
   setTimeUnit: (timeUnit) => {

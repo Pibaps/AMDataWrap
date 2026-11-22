@@ -12,10 +12,13 @@ import type { ChronoData } from "../../api/types";
 import { CalendarHeatmap, DayHourMatrix, VerticalBarsSvg } from "../../components/charts";
 import { BarList, Empty, ErrorNote, Loading, Page, Section, Stat } from "../../components/ui";
 import { useApi, withQs } from "../../hooks/useApi";
+import { useT } from "../../i18n";
 import { useV4Store } from "../../store/useV4Store";
 
 export const ChronoPage: React.FC = () => {
+  const { t } = useT();
   const filters = useV4Store((s) => s.filters);
+  const openDrawer = useV4Store((s) => s.openDrawer);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);
   const { data, loading, error, reload } = useApi<ChronoData>(withQs(API.chrono, qs));
 
@@ -60,7 +63,7 @@ export const ChronoPage: React.FC = () => {
 
   return (
     <Page
-      title="Rythmes"
+      title={t("nav.chrono")}
       kicker="Chronobiologie & cycles d'écoute"
       intro="Répartition de tes écoutes jour par jour, cadences horaires sur la semaine et évolution mensuelle de tes artistes principaux."
     >
@@ -91,7 +94,7 @@ export const ChronoPage: React.FC = () => {
 
       {/* Daily Calendar Heatmap */}
       <Section title="Calendrier d'activité quotidienne" kicker="Présence jour par jour" className="mb-6">
-        <CalendarHeatmap days={heatmap} />
+        <CalendarHeatmap days={heatmap} onSelectDate={(date) => openDrawer({ type: "day", date })} />
       </Section>
 
       {/* 7x24 Matrix + Time Slots */}

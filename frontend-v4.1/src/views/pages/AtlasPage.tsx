@@ -9,6 +9,7 @@ import { API, buildQueryParams, formatHoursNum, formatInt } from "../../api/clie
 import type { AtlasData } from "../../api/types";
 import { BarList, Cover, Empty, ErrorNote, Loading, Page, Section, Stat } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
+import { useT } from "../../i18n";
 import { useV4Store } from "../../store/useV4Store";
 
 function projectLngLat(lng: number, lat: number, w = 880, h = 420): [number, number] {
@@ -18,6 +19,7 @@ function projectLngLat(lng: number, lat: number, w = 880, h = 420): [number, num
 }
 
 export const AtlasPage: React.FC = () => {
+  const { t } = useT();
   const filters = useV4Store((s) => s.filters);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);
   const { data, loading, error, reload } = useApi<AtlasData>(`${API.atlas}${qs}`);

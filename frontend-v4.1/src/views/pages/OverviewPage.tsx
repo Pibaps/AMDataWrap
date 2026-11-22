@@ -8,11 +8,14 @@ import type { OverviewData } from "../../api/types";
 import { playTrack } from "../../audio/playTrack";
 import { BarList, Cover, Empty, ErrorNote, Loading, Page, PlayButton, Section, Stat } from "../../components/ui";
 import { useApi, withQs } from "../../hooks/useApi";
+import { useT } from "../../i18n";
 import { useV4Store } from "../../store/useV4Store";
 
 export const OverviewPage: React.FC = () => {
+  const { t } = useT();
   const filters = useV4Store((s) => s.filters);
   const setActiveTab = useV4Store((s) => s.setActiveTab);
+  const openDrawer = useV4Store((s) => s.openDrawer);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);
   const { data, loading, error, reload } = useApi<OverviewData>(withQs(API.overview, qs));
 
@@ -46,7 +49,7 @@ export const OverviewPage: React.FC = () => {
 
   return (
     <Page
-      title="Synthèse"
+      title={t("nav.overview")}
       kicker={`Cahier d'écoute · ${periodText}`}
       intro="Bilan consolidé de votre bibliothèque, de vos records d'écoute et des œuvres qui dominent la période sélectionnée."
     >
@@ -153,7 +156,11 @@ export const OverviewPage: React.FC = () => {
             ) : (
               <div className="divide-y divide-line">
                 {top_artists.map((a: any, i: number) => (
-                  <div key={a.artist_group_key || i} className="py-2.5 flex items-center gap-3.5 row-hover px-1">
+                  <div
+                    key={a.artist_group_key || i}
+                    onClick={() => a.artist_group_key && openDrawer({ type: "artist", key: a.artist_group_key })}
+                    className={`py-2.5 flex items-center gap-3.5 row-hover px-1 ${a.artist_group_key ? "cursor-pointer" : ""}`}
+                  >
                     <span className="font-display text-[18px] text-ink-3 w-6 text-right num-sans">
                       {a.rank ?? i + 1}
                     </span>
@@ -231,7 +238,11 @@ export const OverviewPage: React.FC = () => {
             ) : (
               <div className="divide-y divide-line">
                 {top_albums.map((al: any, i: number) => (
-                  <div key={al.album_group_key || i} className="py-2.5 flex items-center gap-3.5 row-hover px-1">
+                  <div
+                    key={al.album_group_key || i}
+                    onClick={() => al.album_group_key && openDrawer({ type: "album", key: al.album_group_key })}
+                    className={`py-2.5 flex items-center gap-3.5 row-hover px-1 ${al.album_group_key ? "cursor-pointer" : ""}`}
+                  >
                     <span className="font-display text-[17px] text-ink-3 w-5 text-right num-sans">
                       {al.rank ?? i + 1}
                     </span>

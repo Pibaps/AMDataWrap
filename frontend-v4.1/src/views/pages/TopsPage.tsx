@@ -8,6 +8,7 @@ import type { TopsResponse } from "../../api/types";
 import { playTrack } from "../../audio/playTrack";
 import { Cover, Empty, ErrorNote, Loading, Page, PlayButton, Section, Tabs } from "../../components/ui";
 import { useApi, withQs } from "../../hooks/useApi";
+import { useT } from "../../i18n";
 import { useV4Store } from "../../store/useV4Store";
 
 type TopKind = "artists" | "albums" | "tracks" | "genres";
@@ -20,8 +21,10 @@ const SUB_TABS: Array<{ id: TopKind; label: string }> = [
 ];
 
 export const TopsPage: React.FC = () => {
+  const { t } = useT();
   const [kind, setKind] = useState<TopKind>("artists");
   const filters = useV4Store((s) => s.filters);
+  const openDrawer = useV4Store((s) => s.openDrawer);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);
 
   const endpoint =
@@ -42,7 +45,7 @@ export const TopsPage: React.FC = () => {
 
   return (
     <Page
-      title="Classements"
+      title={t("nav.tops")}
       kicker="Palmarès détaillé"
       intro="Les cinquante entrées les plus écoutées de votre bibliothèque selon la période active, avec taux de complétion et date de première découverte."
       actions={<Tabs value={kind} onChange={(v) => setKind(v as TopKind)} options={SUB_TABS} />}
@@ -117,8 +120,19 @@ export const TopsPage: React.FC = () => {
                         ? item.primary_genre || "Genre non classé"
                         : `${item.artist_name}${item.release_year ? ` · ${item.release_year}` : ""}`;
 
+                    const drawerTarget =
+                      kind === "artists" && item.artist_group_key
+                        ? { type: "artist" as const, key: item.artist_group_key }
+                        : kind === "albums" && item.album_group_key
+                          ? { type: "album" as const, key: item.album_group_key }
+                          : null;
+
                     return (
-                      <tr key={item.track_key || item.album_group_key || item.artist_group_key || idx} className="row-hover">
+                      <tr
+                        key={item.track_key || item.album_group_key || item.artist_group_key || idx}
+                        onClick={() => drawerTarget && openDrawer(drawerTarget)}
+                        className={`row-hover ${drawerTarget ? "cursor-pointer" : ""}`}
+                      >
                         <td className="py-2.5 pr-3 text-right font-display text-[17px] text-ink-3 num-sans">{rank}</td>
                         <td className="py-2.5 px-2">
                           <div className="flex items-center gap-3">

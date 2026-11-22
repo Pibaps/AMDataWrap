@@ -9,9 +9,11 @@ import type { BehaviorData } from "../../api/types";
 import { playTrack } from "../../audio/playTrack";
 import { BarList, Cover, Empty, ErrorNote, InfoTooltip, Loading, Page, PlayButton, Section, Stat } from "../../components/ui";
 import { useApi, withQs } from "../../hooks/useApi";
+import { useT } from "../../i18n";
 import { useV4Store } from "../../store/useV4Store";
 
 export const BehaviorPage: React.FC = () => {
+  const { t } = useT();
   const filters = useV4Store((s) => s.filters);
   const capabilities = useV4Store((s) => s.capabilities);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);

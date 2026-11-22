@@ -23,6 +23,7 @@ from ..continuum.providers import (
 )
 from ..continuum.smtc_worker import is_smtc_supported, smtc_worker
 from ..db import async_db_session, db_session, rebuild_fts_indexes
+from ..demo import load_demo_library, unload_demo_library
 from ..enrichment import enrichment_manager
 from ..ingestion import ingest_zip
 from ..jobs.worker import job_worker
@@ -77,6 +78,18 @@ async def upload_zip(file: UploadFile = File(...)):
     enrichment_manager.start(force_restart=True)
     job_worker.start()
     return {"ok": True, "summary": result}
+
+
+@system_router.post("/api/v4/demo/load")
+async def demo_load():
+    """Load an isolated 1-click Demo library in < 1s without overwriting user data."""
+    return await asyncio.to_thread(load_demo_library)
+
+
+@system_router.post("/api/v4/demo/unload")
+async def demo_unload():
+    """Remove the Demo profile cleanly and restore user's primary profile."""
+    return await asyncio.to_thread(unload_demo_library)
 
 
 @system_router.post("/api/v4/data/clear")

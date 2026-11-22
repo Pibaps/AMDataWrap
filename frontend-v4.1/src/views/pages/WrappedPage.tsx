@@ -4,19 +4,23 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Play } from "lucide-react";
 import { API, buildQueryParams, formatHours, formatInt } from "../../api/client";
 import type { WrappedData } from "../../api/types";
 import { playTrack } from "../../audio/playTrack";
 import { Cover, Empty, ErrorNote, Loading, Page, PlayButton } from "../../components/ui";
 import { useApi } from "../../hooks/useApi";
+import { useT } from "../../i18n";
 import { useV4Store } from "../../store/useV4Store";
+import { exportWrappedPosterPng, exportWrappedReceiptPng } from "../../utils/wrappedExport";
 
 export const WrappedPage: React.FC = () => {
+  const { t, locale } = useT();
   const filters = useV4Store((s) => s.filters);
   const qs = useMemo(() => buildQueryParams(filters), [filters]);
   const { data, loading, error, reload } = useApi<WrappedData>(`${API.wrapped}${qs}`);
   const [slide, setSlide] = useState(0);
+  const [exporting, setExporting] = useState(false);
 
   const slidesCount = 6;
 
@@ -64,7 +68,60 @@ export const WrappedPage: React.FC = () => {
       kicker={`PÉRIODE : ${data.period_label || "TOUTES ANNÉES"} · CHAPITRE ${slide + 1} / ${slidesCount}`}
       intro="Parcours les chapitres marquants de tes écoutes au clavier (← / →) ou via le sélecteur ci-dessous."
       actions={
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {topTrack && (
+            <button
+              type="button"
+              onClick={() =>
+                playTrack({
+                  song_name: topTrack.song_name,
+                  artist_name: topTrack.artist_name || "",
+                  album_name: topTrack.album_name || "",
+                  artwork_url: topTrack.artwork_url,
+                  track_key: topTrack.track_key,
+                  preview_url: topTrack.preview_url,
+                })
+              }
+              className="btn text-xs"
+            >
+              <Play className="w-3.5 h-3.5" />
+              {t("wrapped.autoSoundtrack")}
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={exporting}
+            onClick={async () => {
+              setExporting(true);
+              try {
+                await exportWrappedPosterPng(data, locale);
+              } finally {
+                setExporting(false);
+              }
+            }}
+            data-testid="wrapped-export-poster"
+            className="btn text-xs"
+          >
+            <Download className="w-3.5 h-3.5" />
+            {t("wrapped.exportPoster")}
+          </button>
+          <button
+            type="button"
+            disabled={exporting}
+            onClick={async () => {
+              setExporting(true);
+              try {
+                await exportWrappedReceiptPng(data, locale);
+              } finally {
+                setExporting(false);
+              }
+            }}
+            data-testid="wrapped-export-receipt"
+            className="btn text-xs"
+          >
+            <Download className="w-3.5 h-3.5" />
+            {t("wrapped.exportReceipt")}
+          </button>
           <button
             className="btn btn-icon"
             disabled={slide <= 0}

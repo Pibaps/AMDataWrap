@@ -15,8 +15,11 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Disc3, ExternalLink, Pause, Play, Radio, SkipBack, SkipForward, Tv, X } from "lucide-react";
+import { Disc3, ExternalLink, FileText, Pause, Play, Radio, SkipBack, SkipForward, Tv, X } from "lucide-react";
 import { API, apiGet, apiPost, formatDurationMs } from "../api/client";
+import type { TrackBpmData } from "../api/types";
+import { useT } from "../i18n";
+import { LyricsPanel } from "./LyricsPanel";
 import { playbackClock, usePlaybackClock } from "../audio/playbackClock";
 import {
   getLastBridgePlayAt,
@@ -149,6 +152,36 @@ export const HybridPlaybackDeck: React.FC = () => {
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const [ytMounted, setYtMounted] = useState(false);
   const [showBridgeGuide, setShowBridgeGuide] = useState(false);
+  const [lyricsOpen, setLyricsOpen] = useState(false);
+  const [bpm, setBpm] = useState<number | null>(null);
+  const bpmCacheRef = useRef<Map<string, number | null>>(new Map());
+  const { t } = useT();
+
+  useEffect(() => {
+    if (!nowPlaying?.song_name || !nowPlaying?.artist_name) {
+      setBpm(null);
+      return;
+    }
+    const key = `${nowPlaying.artist_name}::${nowPlaying.song_name}`.toLowerCase();
+    if (bpmCacheRef.current.has(key)) {
+      setBpm(bpmCacheRef.current.get(key) ?? null);
+      return;
+    }
+    const ctrl = new AbortController();
+    apiGet<TrackBpmData>(
+      `${API.trackBpm}?song=${encodeURIComponent(nowPlaying.song_name)}&artist=${encodeURIComponent(nowPlaying.artist_name)}`,
+      ctrl.signal,
+    )
+      .then((res) => {
+        const val = res?.found && res.bpm ? Math.round(res.bpm) : null;
+        bpmCacheRef.current.set(key, val);
+        setBpm(val);
+      })
+      .catch(() => {
+        if (!ctrl.signal.aborted) setBpm(null);
+      });
+    return () => ctrl.abort();
+  }, [nowPlaying?.song_name, nowPlaying?.artist_name]);
 
   const { positionMs, durationMs } = usePlaybackClock(250);
 
@@ -849,6 +882,25 @@ export const HybridPlaybackDeck: React.FC = () => {
 
         <div className="hidden sm:flex items-center justify-end gap-1.5 w-1/3 text-xs">
           {playbackError && <span className="text-ember text-[11px] truncate max-w-[140px]">{playbackError}</span>}
+          {bpm != null && (
+            <span className="px-1.5 py-0.5 rounded bg-bg-3 border border-line text-[10px] font-mono text-amber shrink-0">
+              {bpm} {t("player.bpm")}
+            </span>
+          )}
+          <button
+            type="button"
+            data-testid="lyrics-toggle"
+            onClick={() => setLyricsOpen((v) => !v)}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded border text-[11px] transition-colors shrink-0 ${
+              lyricsOpen
+                ? "bg-amber text-[#1a0f07] border-amber font-semibold"
+                : "border-line bg-bg-1 text-ink-2 hover:text-ink"
+            }`}
+            title={t("player.lyricsTitle")}
+          >
+            <FileText className="w-3 h-3" />
+            <span className="hidden lg:inline">{t("player.lyrics")}</span>
+          </button>
           <span className="num text-[11px] text-ink-3 mr-1 hidden xl:inline">VOL {volumePct}%</span>
 
           {/* Clear 0 EUR Source Switcher: YouTube Integrated vs Open Tab Bridge (Apple Music / Spotify / Deezer) */}
@@ -913,6 +965,7 @@ export const HybridPlaybackDeck: React.FC = () => {
           </div>
         </div>
       </footer>
+      <LyricsPanel open={lyricsOpen} onClose={() => setLyricsOpen(false)} />
     </>
   );
 };
