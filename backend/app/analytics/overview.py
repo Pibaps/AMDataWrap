@@ -487,7 +487,8 @@ def get_top_albums(f: FilterParams, limit: int = 50, offset: int = 0) -> dict[st
                         FROM tracks_catalog tc2
                         WHERE tc2.album_group_key = tc.album_group_key
                           AND tc2.artwork_url IS NOT NULL AND tc2.artwork_url != ''
-                        ORDER BY tc2.total_plays DESC, tc2.song_name ASC
+                        GROUP BY tc2.artwork_url
+                        ORDER BY (COUNT(*) >= 2) DESC, SUM(tc2.total_plays) DESC, COUNT(*) DESC
                         LIMIT 1
                     ) AS artwork_url,
                     MAX(tc.preview_url) AS preview_url,

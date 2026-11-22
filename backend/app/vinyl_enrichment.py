@@ -495,7 +495,8 @@ def api_get_vinyl_crate(
                     FROM tracks_catalog tc2
                     WHERE tc2.album_group_key = tc.album_group_key
                       AND tc2.artwork_url IS NOT NULL AND tc2.artwork_url != ''
-                    ORDER BY tc2.total_plays DESC, tc2.song_name ASC
+                    GROUP BY tc2.artwork_url
+                    ORDER BY (COUNT(*) >= 2) DESC, SUM(tc2.total_plays) DESC, COUNT(*) DESC
                     LIMIT 1
                 ) AS artwork_url,
                 MAX(tc.back_cover_url) AS back_cover_url,
@@ -623,13 +624,26 @@ def api_get_vinyl_detail(
         total_plays = sum(int(t["plays"] or 0) for t in tracks)
         total_ms = sum(int(t["total_ms"] or 0) for t in tracks)
 
+        # Validate album artwork across multiple tracks (consensus >= 2 tracks, tie-broken by plays)
+        art_counts: dict[str, tuple[int, int]] = {}
+        for t in tracks:
+            u = t.get("artwork_url")
+            if u:
+                c, p = art_counts.get(u, (0, 0))
+                art_counts[u] = (c + 1, p + int(t.get("plays") or 0))
+        consensus_artwork = (
+            max(art_counts.items(), key=lambda kv: (kv[1][0] >= 2, kv[1][1], kv[1][0]))[0]
+            if art_counts
+            else first["artwork_url"]
+        )
+
         return {
             "album_key": album_key,
             "album_name": first["album_name"],
             "artist_name": first["artist_name"] or "Artiste inconnu",
             "genre": first["genre"] or "Inconnu",
             "release_year": (ve["press_year"] if ve and ve["press_year"] else first["release_year"]),
-            "artwork_url": (ve["front_cover_url"] if ve and ve["front_cover_url"] else first["artwork_url"]),
+            "artwork_url": (ve["front_cover_url"] if ve and ve["front_cover_url"] else consensus_artwork),
             "back_cover_url": ve["back_cover_url"] if ve else None,
             "medium_label_url": ve["medium_label_url"] if ve else None,
             "label_name": (ve["label_name"] if ve and ve["label_name"] else "Pressage Indépendant / Digital"),
