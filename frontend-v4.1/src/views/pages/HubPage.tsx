@@ -73,7 +73,11 @@ export const HubPage: React.FC<HubPageProps> = ({ onRefreshProfiles }) => {
       if (!res.ok) throw new Error(data.detail || res.statusText);
       invalidateApiCache();
       await onRefreshProfiles();
-      setBackupMsg(`Sauvegarde restaurée : ${data.name || "profil"} (${formatInt(data.inserted_events || 0)} écoutes).`);
+      setBackupMsg(
+        `Sauvegarde restaurée : ${data.profile_name || data.name || "profil"} (${formatInt(
+          data.restored_events ?? data.inserted_events ?? 0,
+        )} écoutes).`,
+      );
     } catch (err: any) {
       setBackupMsg(`Erreur restauration : ${err.message}`);
     } finally {
