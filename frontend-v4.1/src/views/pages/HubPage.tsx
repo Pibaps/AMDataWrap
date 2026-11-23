@@ -10,9 +10,10 @@
  * - Capabilities Matrix, ISRC ±180s Merged Profiles, MV3 Extension details, Webhooks, LAN QR Code.
  */
 
-import React, { useEffect, useState } from "react";
-import { Check, ChevronDown, Clock, Copy, Download, GitMerge, Plus, RefreshCw, Smartphone, Trash2, Upload, Wifi } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, Clock, Copy, Download, GitMerge, Pause, Play, Plus, RefreshCw, Smartphone, Trash2, Upload, Wifi } from "lucide-react";
 import { API, apiDelete, apiGet, apiPost, formatInt, type ProfileItem } from "../../api/client";
+import type { EnrichmentSnapshot } from "../../api/types";
 import { Page, Section } from "../../components/ui";
 import { invalidateApiCache } from "../../hooks/useApi";
 import { useV4Store } from "../../store/useV4Store";
@@ -85,6 +86,62 @@ export const HubPage: React.FC<HubPageProps> = ({ onRefreshProfiles }) => {
     }
   };
 
+  const [enrichment, setEnrichment] = useState<EnrichmentSnapshot | null>(null);
+  const [enrichmentBusy, setEnrichmentBusy] = useState(false);
+  const esRef = useRef<EventSource | null>(null);
+
+  const connectEnrichmentStream = useCallback(() => {
+    apiGet<EnrichmentSnapshot>("/api/enrichment/status")
+      .then((snap) => setEnrichment(snap))
+      .catch(() => {});
+
+    esRef.current?.close();
+    try {
+      const es = new EventSource("/api/enrichment/stream");
+      esRef.current = es;
+      es.onmessage = (ev) => {
+        try {
+          const next = JSON.parse(ev.data) as EnrichmentSnapshot;
+          setEnrichment(next);
+          if (!next.running && (next.phase === "done" || next.phase === "stopped" || next.phase === "idle")) {
+            es.close();
+            if (esRef.current === es) esRef.current = null;
+          }
+        } catch {
+          /* ignore */
+        }
+      };
+      es.onerror = () => {
+        es.close();
+        if (esRef.current === es) esRef.current = null;
+      };
+    } catch {
+      /* SSE unavailable */
+    }
+  }, []);
+
+  useEffect(() => {
+    connectEnrichmentStream();
+    return () => {
+      esRef.current?.close();
+      esRef.current = null;
+    };
+  }, [connectEnrichmentStream]);
+
+  const toggleEnrichment = async () => {
+    if (!enrichment) return;
+    setEnrichmentBusy(true);
+    try {
+      const next = await apiPost<EnrichmentSnapshot>(
+        enrichment.running ? "/api/enrichment/stop" : "/api/enrichment/start"
+      );
+      setEnrichment(next);
+      if (next.running) connectEnrichmentStream();
+    } finally {
+      setEnrichmentBusy(false);
+    }
+  };
+
   const handleRepairEnrichment = async () => {
     setRepairing(true);
     setRepairMsg(null);
@@ -96,6 +153,7 @@ export const HubPage: React.FC<HubPageProps> = ({ onRefreshProfiles }) => {
           ? `${formatInt(res.queued_tracks)} titres remis en file pour réparation des pochettes et extraits.`
           : "Toutes les pochettes et extraits sont déjà complets."
       );
+      connectEnrichmentStream();
     } catch (err: any) {
       setRepairMsg(`Erreur : ${err.message}`);
     } finally {
@@ -488,6 +546,67 @@ export const HubPage: React.FC<HubPageProps> = ({ onRefreshProfiles }) => {
               <span className="text-[11.5px] text-amber num">{backupMsg || repairMsg}</span>
             )}
           </div>
+
+          {enrichment && enrichment.total > 0 && (() => {
+            const pct = Math.min(100, Math.round((enrichment.completed / Math.max(1, enrichment.total)) * 100));
+            const isDone = !enrichment.running && enrichment.completed >= enrichment.total;
+            return (
+              <div
+                data-testid="archive-enrichment-progress"
+                className="mt-3 p-3 rounded-lg bg-bg-2 border border-line space-y-2"
+              >
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        enrichment.running ? "bg-amber animate-pulse" : isDone ? "bg-moss" : "bg-brass"
+                      }`}
+                    />
+                    <span className="font-medium text-ink truncate">
+                      {enrichment.running
+                        ? "Enrichissement des pochettes & extraits en cours…"
+                        : isDone
+                          ? "Catalogue enrichi"
+                          : "Enrichissement en pause"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="num text-[11px] text-ink-2">
+                      {formatInt(enrichment.completed)}/{formatInt(enrichment.total)} ({pct}%)
+                    </span>
+                    {!isDone && (
+                      <button
+                        type="button"
+                        onClick={toggleEnrichment}
+                        disabled={enrichmentBusy}
+                        className="btn text-[11px] py-1 px-2"
+                        title={enrichment.running ? "Mettre en pause" : "Reprendre"}
+                      >
+                        {enrichment.running ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                        {enrichment.running ? "Pause" : "Reprendre"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="w-full h-1.5 bg-bg-3 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-300 ${
+                      enrichment.running ? "bg-amber" : isDone ? "bg-moss" : "bg-brass"
+                    }`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2 text-[11px] text-ink-3">
+                  <span className="truncate">
+                    {enrichment.running && enrichment.current_track ? enrichment.current_track : ""}
+                  </span>
+                  <span className="num shrink-0">
+                    {formatInt(enrichment.with_artwork ?? enrichment.enriched ?? 0)} pochettes
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
         </Section>
 
         <Section

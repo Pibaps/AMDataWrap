@@ -41,7 +41,42 @@ if ($requested.Count -gt 0) {
         exit 1
     }
 } else {
-    $selected = $frontends
+    Write-Host ""
+    Write-Host "=========================================" -ForegroundColor Cyan
+    Write-Host "   AMDataWrap - Menu de demarrage" -ForegroundColor Cyan
+    Write-Host "=========================================" -ForegroundColor Cyan
+    Write-Host "  [1] V4.1 Salon 3D      (:5177) [Defaut]" -ForegroundColor DarkYellow
+    Write-Host "  [2] V4.0 Vinyl Studio  (:5176)" -ForegroundColor Red
+    Write-Host "  [3] V3 Continuum       (:5175)" -ForegroundColor Blue
+    Write-Host "  [4] V2 Spatial 3D      (:5174)" -ForegroundColor Magenta
+    Write-Host "  [5] V1 Classique       (:5173)" -ForegroundColor Green
+    Write-Host "  [A] Toutes les interfaces" -ForegroundColor White
+    Write-Host "  [B] Backend seul       (:8000)" -ForegroundColor Cyan
+    Write-Host "  [Q] Quitter" -ForegroundColor DarkGray
+    Write-Host "-----------------------------------------" -ForegroundColor DarkGray
+    $choice = Read-Host "Votre choix (ex: 1, 2,3 ou Entree = V4.1)"
+    if ([string]::IsNullOrWhiteSpace($choice)) { $choice = "1" }
+
+    $tokens = $choice -split ',' | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ }
+    if ($tokens -contains "q") {
+        Write-Host "Annule." -ForegroundColor DarkGray
+        exit 0
+    } elseif ($tokens -contains "b") {
+        $selected = @()
+    } elseif ($tokens -contains "a") {
+        $selected = $frontends
+    } else {
+        $menuMap = @{ "1" = "4.1"; "2" = "4.0"; "3" = "3"; "4" = "2"; "5" = "1" }
+        $mapped = $tokens | ForEach-Object { if ($menuMap.ContainsKey($_)) { $menuMap[$_] } else { $_ } }
+        $selected = $frontends | Where-Object {
+            $aliases = $_.Aliases
+            $null -ne ($mapped | Where-Object { $aliases -contains $_ } | Select-Object -First 1)
+        }
+        if (-not $selected -or $selected.Count -eq 0) {
+            Write-Host "Choix invalide: $choice" -ForegroundColor Red
+            exit 1
+        }
+    }
 }
 
 if (Test-PortListening 8000) {
@@ -69,11 +104,12 @@ foreach ($fe in $selected) {
         Write-Host "$($fe.Name) deja actif sur http://localhost:$($fe.Port)" -ForegroundColor Yellow
     } else {
         Write-Host "Demarrage de $($fe.Name) (:$($fe.Port))..." -ForegroundColor $fe.Color
-        Start-Process powershell -WorkingDirectory $feDir -ArgumentList "-NoExit", "-Command", "npm run dev"
+        $cmd = "if (-not (Test-Path node_modules)) { Write-Host 'Installation des dependances ($($fe.Dir))...' -ForegroundColor Cyan; npm install }; npm run dev"
+        Start-Process powershell -WorkingDirectory $feDir -ArgumentList "-NoExit", "-Command", $cmd
     }
 }
 
-if (-not $NoBrowser) {
+if (-not $NoBrowser -and $selected.Count -gt 0) {
     Start-Sleep -Seconds 2
     $defaultFe = $selected | Where-Object { $_.Principal } | Select-Object -First 1
     if (-not $defaultFe) {
