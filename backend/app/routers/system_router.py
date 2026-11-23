@@ -149,7 +149,7 @@ def enrichment_status():
 
 
 @system_router.post("/api/enrichment/start")
-def enrichment_start():
+async def enrichment_start():
     enrichment_manager.start()
     return enrichment_manager.get_snapshot()
 
