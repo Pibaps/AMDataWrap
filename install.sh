@@ -1,83 +1,134 @@
 #!/usr/bin/env bash
-# Script d'installation automatique des dépendances Backend (Python venv) et Frontend (npm) pour Linux/macOS
+# Script d'installation des dependances Backend (Python venv) et Frontend (npm) pour Linux/macOS
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "========================================="
-echo " AMDataWrap - Installation des dépendances (Linux/macOS)"
-echo "========================================="
+ALL_FRONTENDS=false
+FRONTEND_ARGS=()
+
+usage() {
+    echo "Usage: $0 [options]"
+    echo ""
+    echo "Options:"
+    echo "  --all                    Installer tous les frontends (V1 a V4.1)"
+    echo "  --frontends=1,2,3,4,4.1  Installer des versions specifiques (defaut: 4.1)"
+    echo "  -h, --help               Afficher cette aide"
+    exit 0
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h|--help)
+            usage
+            ;;
+        --all|-all|-a)
+            ALL_FRONTENDS=true
+            shift
+            ;;
+        --frontends=*|-frontends=*)
+            IFS=',' read -ra FRONTEND_ARGS <<< "${1#*=}"
+            shift
+            ;;
+        --frontends|-frontends)
+            if [ $# -lt 2 ]; then
+                echo "ERREUR : --frontends attend une valeur (ex: --frontends 4.1)" >&2
+                exit 1
+            fi
+            IFS=',' read -ra FRONTEND_ARGS <<< "$2"
+            shift 2
+            ;;
+        *)
+            echo "ERREUR : Option inconnue: $1" >&2
+            echo "Utilisez --help pour voir les options disponibles." >&2
+            exit 1
+            ;;
+    esac
+done
+
+echo "=============================================="
+echo " AMDataWrap - Installation (Linux/macOS)"
+echo "=============================================="
 echo ""
 
-# 1. Vérification Python
-echo "[1/3] Vérification de Python..."
+# 1. Verification de Python 3
+echo "[1/3] Verification de Python..."
 PYTHON_BIN=""
 for cmd in python3 python; do
     if command -v "$cmd" >/dev/null 2>&1; then
-        PYTHON_BIN="$cmd"
-        break
+        if "$cmd" -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >/dev/null 2>&1; then
+            PYTHON_BIN="$cmd"
+            break
+        fi
     fi
 done
 
 if [ -z "$PYTHON_BIN" ]; then
-    echo "ERREUR : Python 3 est introuvable. Veuillez installer python3 et python3-venv (ex: sudo apt install python3 python3-venv)." >&2
+    echo "ERREUR : Python 3.10+ est introuvable." >&2
+    echo "Installez python3 et python3-venv (ex: sudo apt install python3 python3-venv)." >&2
     exit 1
 fi
 
-echo "Python détecté : $("$PYTHON_BIN" --version) ($PYTHON_BIN)"
+echo "Python detecte : $("$PYTHON_BIN" --version) ($PYTHON_BIN)"
 
-# 2. Venv Backend
+# 2. Configuration du venv Backend
 echo ""
 echo "[2/3] Configuration du Backend (Python venv)..."
 BACKEND_DIR="$ROOT_DIR/backend"
 VENV_DIR="$BACKEND_DIR/.venv"
+VENV_PYTHON="$VENV_DIR/bin/python"
 
-if [ ! -d "$VENV_DIR" ]; then
-    echo "Création du venv Python dans $VENV_DIR..."
-    "$PYTHON_BIN" -m venv "$VENV_DIR"
+if [ ! -x "$VENV_PYTHON" ] || ! "$VENV_PYTHON" -m pip --version >/dev/null 2>&1; then
+    if [ -d "$VENV_DIR" ]; then
+        echo "Venv incomplet detecte, recreation dans $VENV_DIR..."
+        rm -rf "$VENV_DIR"
+    else
+        echo "Creation du venv Python dans $VENV_DIR..."
+    fi
+    if ! "$PYTHON_BIN" -m venv "$VENV_DIR"; then
+        rm -rf "$VENV_DIR"
+        echo "ERREUR : Echec de creation du venv. Verifiez que python3-venv est installe (ex: sudo apt install python3-venv)." >&2
+        exit 1
+    fi
 else
-    echo "Venv existant détecté dans $VENV_DIR."
-fi
-
-VENV_PIP="$VENV_DIR/bin/pip"
-if [ ! -f "$VENV_PIP" ]; then
-    echo "ERREUR : pip est introuvable dans $VENV_DIR/bin/pip" >&2
-    exit 1
+    echo "Venv existant detecte dans $VENV_DIR."
 fi
 
 REQ_FILE="$BACKEND_DIR/requirements.txt"
-if [ -f "$REQ_FILE" ]; then
-    echo "Installation des dépendances Python..."
-    "$VENV_PIP" install --upgrade pip
-    "$VENV_PIP" install -r "$REQ_FILE"
-    echo "Dépendances Backend installées avec succès !"
-fi
-
-# 3. Vérification Node.js & npm
-echo ""
-echo "[3/3] Installation des dépendances Frontend (Node / npm)..."
-if ! command -v npm >/dev/null 2>&1; then
-    echo "ERREUR : npm est introuvable. Veuillez installer Node.js (>= 18) et npm." >&2
+if [ ! -f "$REQ_FILE" ]; then
+    echo "ERREUR : Fichier $REQ_FILE introuvable." >&2
     exit 1
 fi
 
-echo "Node.js : $(node --version) (npm: $(npm --version))"
+echo "Installation des dependances Python..."
+"$VENV_PYTHON" -m pip install --upgrade pip || true
+"$VENV_PYTHON" -m pip install -r "$REQ_FILE"
+echo "Dependances Backend installees avec succes !"
 
-ALL_FRONTENDS=false
-FRONTEND_ARGS=()
+# 3. Verification de Node.js & npm
+echo ""
+echo "[3/3] Installation des dependances Frontend (Node / npm)..."
+if ! command -v npm >/dev/null 2>&1; then
+    echo "ERREUR : npm / Node.js est introuvable. Installez Node.js (>= 18) et npm." >&2
+    exit 1
+fi
 
-for arg in "$@"; do
-    case "$arg" in
-        --all|-all|-a)
-            ALL_FRONTENDS=true
-            ;;
-        --frontends=*|-frontends=*)
-            IFS=',' read -ra FRONTEND_ARGS <<< "${arg#*=}"
-            ;;
-        *)
-            ;;
-    esac
-done
+echo "Node.js detecte : $(node --version) (npm $(npm --version))"
+
+matches_frontend() {
+    local target="$1"
+    local req clean_req
+    for req in "${FRONTEND_ARGS[@]}"; do
+        clean_req=$(echo "$req" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+        if [ "$clean_req" = "$target" ] || [ "$clean_req" = "v$target" ]; then
+            return 0
+        fi
+        if [ "$target" = "4.0" ] && { [ "$clean_req" = "4" ] || [ "$clean_req" = "v4" ]; }; then
+            return 0
+        fi
+    done
+    return 1
+}
 
 should_install() {
     local target="$1"
@@ -85,16 +136,10 @@ should_install() {
         return 0
     fi
     if [ ${#FRONTEND_ARGS[@]} -eq 0 ]; then
-        # Par défaut, installe seulement 4.1
-        [ "$target" = "4.1" ] && return 0 || return 1
+        [ "$target" = "4.1" ]
+        return $?
     fi
-    for req in "${FRONTEND_ARGS[@]}"; do
-        clean_req=$(echo "$req" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
-        if [ "$clean_req" = "$target" ] || [ "$clean_req" = "v$target" ]; then
-            return 0
-        fi
-    done
-    return 1
+    matches_frontend "$target"
 }
 
 FRONTENDS=(
@@ -105,6 +150,7 @@ FRONTENDS=(
     "1:frontend:V1 Classique"
 )
 
+INSTALLED_COUNT=0
 for item in "${FRONTENDS[@]}"; do
     IFS=":" read -r fid fdir fname <<< "$item"
     if should_install "$fid"; then
@@ -115,15 +161,23 @@ for item in "${FRONTENDS[@]}"; do
                 cd "$ROOT_DIR/$fdir"
                 npm install
             )
-            echo "Dépendances pour $fname installées avec succès !"
+            echo "Dependances pour $fname installees avec succes !"
+            INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
+        else
+            echo "Dossier $fdir introuvable, ignore."
         fi
     fi
 done
 
+if [ "$INSTALLED_COUNT" -eq 0 ]; then
+    echo "ERREUR : Aucune version valide trouvee pour: ${FRONTEND_ARGS[*]}" >&2
+    echo "Valeurs valides : 1, 2, 3, 4.0, 4.1" >&2
+    exit 1
+fi
+
 echo ""
-echo "========================================="
-echo " Installation terminée avec succès !"
-echo " Vous pouvez lancer l'application avec :"
-echo "   ./start.sh"
+echo "=============================================="
+echo " Installation terminee avec succes !"
+echo " Lancez l'application avec :"
 echo "   ./start.sh --versions=4.1"
-echo "========================================="
+echo "=============================================="

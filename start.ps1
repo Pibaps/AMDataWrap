@@ -54,7 +54,7 @@ if (Test-PortListening 8000) {
     } elseif (Get-Command uvicorn -ErrorAction SilentlyContinue) {
         Start-Process powershell -WorkingDirectory $root -ArgumentList "-NoExit", "-Command", "uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
     } else {
-        Write-Host "ERREUR : uvicorn est introuvable. Veuillez d'abord exécuter .\install.ps1 (ou install.bat)." -ForegroundColor Red
+        Write-Host "ERREUR : uvicorn est introuvable. Executez d'abord .\install.ps1 (ou install.bat)." -ForegroundColor Red
         exit 1
     }
 }
