@@ -8,14 +8,49 @@ L'interface principale actuelle est **V4.1 « Salon d'écoute » (`frontend-v4.1
 
 ## 1. Démarrage rapide & Services
 
-Double-cliquez sur **`start.bat`** (ou lancez **`.\start.ps1`** en PowerShell) pour démarrer le backend et **toutes les interfaces** (V1 à V4.1) :
+### A. Installation initiale (après git clone)
 
+Sous **Windows** :
 ```powershell
-# Démarrage complet (Backend :8000 + V1 :5173, V2 :5174, V3 :5175, V4.0 :5176, V4.1 :5177)
+# Installe les dépendances Backend (.venv) et Frontend principal V4.1 (double-clic possible sur install.bat)
+.\install.ps1
+
+# Ou pour installer TOUS les frontends (V1, V2, V3, V4, V4.1) :
+.\install.ps1 -AllFrontends
+```
+
+Sous **Linux / macOS** :
+```bash
+# Rendre les scripts exécutables
+chmod +x install.sh start.sh
+
+# Installer le backend et le frontend principal V4.1
+./install.sh
+
+# Ou pour installer tous les frontends :
+./install.sh --all
+```
+
+### B. Lancement de l'application
+
+Sous **Windows** :
+Double-cliquez sur **`start.bat`** (ou lancez **`.\start.ps1`** en PowerShell) pour démarrer le backend et les interfaces :
+```powershell
+# Démarrage complet (Backend :8000 + V1 à V4.1)
 .\start.ps1
 
-# Démarrer uniquement certaines versions (ex. V3 et V4.1)
+# Démarrer uniquement certaines versions (ex. V4.1 seule ou V3 + V4.1)
+.\start.ps1 -Versions 4.1
 .\start.ps1 -Versions 3,4.1
+```
+
+Sous **Linux / macOS** :
+```bash
+# Démarrage complet (Backend :8000 + toutes les interfaces)
+./start.sh
+
+# Démarrer uniquement la version V4.1 Salon 3D
+./start.sh --versions=4.1
 ```
 
 | Service | URL | Dossier | Rôle |

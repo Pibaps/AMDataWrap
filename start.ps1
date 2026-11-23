@@ -48,7 +48,15 @@ if (Test-PortListening 8000) {
     Write-Host "Backend API deja actif sur http://0.0.0.0:8000" -ForegroundColor Yellow
 } else {
     Write-Host "Demarrage du Backend FastAPI (:8000 LAN)..." -ForegroundColor Cyan
-    Start-Process powershell -WorkingDirectory $root -ArgumentList "-NoExit", "-Command", ".\backend\.venv\Scripts\uvicorn.exe backend.app.main:app --host 0.0.0.0 --port 8000"
+    $venvUvicorn = Join-Path $root "backend\.venv\Scripts\uvicorn.exe"
+    if (Test-Path $venvUvicorn) {
+        Start-Process powershell -WorkingDirectory $root -ArgumentList "-NoExit", "-Command", ".\backend\.venv\Scripts\uvicorn.exe backend.app.main:app --host 0.0.0.0 --port 8000"
+    } elseif (Get-Command uvicorn -ErrorAction SilentlyContinue) {
+        Start-Process powershell -WorkingDirectory $root -ArgumentList "-NoExit", "-Command", "uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
+    } else {
+        Write-Host "ERREUR : uvicorn est introuvable. Veuillez d'abord exécuter .\install.ps1 (ou install.bat)." -ForegroundColor Red
+        exit 1
+    }
 }
 
 foreach ($fe in $selected) {
